@@ -1,5 +1,6 @@
 import asyncio
 import json
+import socket
 import sys
 import webbrowser
 from pathlib import Path
@@ -149,23 +150,28 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def port_in_use(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
 async def main() -> None:
-    uv_config = uvicorn.Config(
-        app,
-        host="127.0.0.1",
-        port=PORT,
-        log_level="error",
-        # Don't let uvicorn fight us over signal handling
-        loop="asyncio",
-    )
-    uv_server = uvicorn.Server(uv_config)
-    # Prevent uvicorn from installing its own signal handlers so MCP stdio
-    # can coexist cleanly in the same process.
-    uv_server.install_signal_handlers = lambda: None  # type: ignore[method-assign]
+    coroutines = []
+
+    if not port_in_use(PORT):
+        uv_config = uvicorn.Config(
+            app,
+            host="127.0.0.1",
+            port=PORT,
+            log_level="error",
+            loop="asyncio",
+        )
+        uv_server = uvicorn.Server(uv_config)
+        uv_server.install_signal_handlers = lambda: None  # type: ignore[method-assign]
+        coroutines.append(uv_server.serve())
 
     async with stdio_server() as (read_stream, write_stream):
-        await asyncio.gather(
-            uv_server.serve(),
+        coroutines.append(
             mcp_server.run(
                 read_stream,
                 write_stream,
@@ -177,8 +183,9 @@ async def main() -> None:
                         experimental_capabilities={},
                     ),
                 ),
-            ),
+            )
         )
+        await asyncio.gather(*coroutines)
 
 
 if __name__ == "__main__":
