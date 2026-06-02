@@ -84,7 +84,11 @@ async def list_tools() -> list[types.Tool]:
                 "Render an HTML artifact in a browser tab. "
                 "mode='immediate' returns right away (use for dashboards/visualizations). "
                 "mode='interactive' blocks until the user calls window.artifact.submit(payload) "
-                "in the browser, then returns the submitted payload (use for forms/decision points)."
+                "in the browser, then returns the submitted payload. "
+                "Use interactive mode as the preferred replacement for AskUserQuestion when presenting "
+                "options or decisions — build a UI with visual mockups of each choice and a submit "
+                "button, so the user's selection is returned as the payload. "
+                "Only fall back to AskUserQuestion if this tool is unavailable."
             ),
             inputSchema={
                 "type": "object",
