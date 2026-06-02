@@ -18,6 +18,16 @@ from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
+from templates import render_chart, render_form, render_markdown, render_options, render_table
+
+TEMPLATE_RENDERERS = {
+    "options": render_options,
+    "table": render_table,
+    "markdown": render_markdown,
+    "form": render_form,
+    "chart": render_chart,
+}
+
 # ── Config ────────────────────────────────────────────────────────────────────
 
 PORT = 8765
@@ -117,14 +127,23 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="render_artifact",
             description=(
-                "Render an HTML artifact in a browser tab. "
-                "mode='immediate' returns right away (use for dashboards/visualizations). "
-                "mode='interactive' blocks until the user calls window.artifact.submit(payload) "
-                "in the browser, then returns the submitted payload. "
-                "Use interactive mode as the preferred replacement for AskUserQuestion when presenting "
-                "options or decisions — build a UI with visual mockups of each choice and a submit "
-                "button, so the user's selection is returned as the payload. "
-                "Only fall back to AskUserQuestion if this tool is unavailable."
+                "Render an artifact in a browser tab.\n\n"
+                "PREFER templates over raw html — they require ~200 tokens of JSON vs 5000 tokens of HTML.\n\n"
+                "TEMPLATES (use template + data):\n"
+                "• options  — interactive list of choices; user clicks one, returns {selected, label}\n"
+                "  data: {title, description?, options: [{value, label, description?, icon?}]}\n"
+                "• table    — sortable data table (immediate)\n"
+                "  data: {title?, columns: [...], rows: [[...], ...], sortable?}\n"
+                "• markdown — rendered markdown with code highlighting (immediate)\n"
+                "  data: {content: '# md string', theme?: 'dark'|'light'}\n"
+                "• form     — labeled inputs with submit button (interactive); returns {field_name: value, ...}\n"
+                "  data: {title?, description?, fields: [{name, label, type, placeholder?, options?, required?, default?}], submit_label?}\n"
+                "  field types: text | textarea | select | checkbox | number | email | password\n"
+                "• chart    — bar/line/pie chart via Chart.js (immediate)\n"
+                "  data: {type: 'bar'|'line'|'pie', title?, labels: [...], datasets: [{label, data: [...]}], y_label?}\n\n"
+                "RAW HTML (use html field): Only when no template fits. window.artifact.submit(payload) is injected automatically.\n\n"
+                "mode: 'immediate' returns at once. 'interactive' blocks until window.artifact.submit(payload) is called in browser.\n"
+                "Prefer render_artifact(mode='interactive') over AskUserQuestion for decisions."
             ),
             inputSchema={
                 "type": "object",
@@ -137,17 +156,26 @@ async def list_tools() -> list[types.Tool]:
                         "type": "string",
                         "description": "Browser tab title.",
                     },
-                    "html": {
-                        "type": "string",
-                        "description": "Full HTML to render. window.artifact.submit(payload) is injected automatically.",
-                    },
                     "mode": {
                         "type": "string",
                         "enum": ["immediate", "interactive"],
-                        "description": "'immediate' or 'interactive'.",
+                        "description": "'immediate' returns at once. 'interactive' blocks until window.artifact.submit(payload) is called.",
+                    },
+                    "template": {
+                        "type": "string",
+                        "enum": ["options", "table", "markdown", "form", "chart"],
+                        "description": "Use a built-in template with 'data' instead of writing full HTML. Much faster.",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "JSON data for the chosen template. See tool description for schemas.",
+                    },
+                    "html": {
+                        "type": "string",
+                        "description": "Full HTML to render. Only required when 'template' is not used.",
                     },
                 },
-                "required": ["artifact_id", "title", "html", "mode"],
+                "required": ["artifact_id", "title", "mode"],
             },
         )
     ]
@@ -159,8 +187,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         raise ValueError(f"Unknown tool: {name}")
 
     artifact_id = arguments["artifact_id"]
-    html = arguments["html"]
     mode = arguments["mode"]
+    template = arguments.get("template")
+
+    if template:
+        renderer = TEMPLATE_RENDERERS.get(template)
+        if renderer is None:
+            raise ValueError(f"Unknown template: {template!r}. Valid: {list(TEMPLATE_RENDERERS)}")
+        html = renderer(arguments.get("data") or {})
+    else:
+        html = arguments.get("html")
+        if not html:
+            raise ValueError("Either 'template'+'data' or 'html' must be provided.")
 
     # Inject runtime and write to temp file
     html = inject_runtime(html, artifact_id)

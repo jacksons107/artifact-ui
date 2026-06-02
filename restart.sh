@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
+# Kill any running artifact-ui server instances (orphans from previous Claude sessions).
+# Claude Code manages server startup automatically via the MCP config — do NOT start
+# a background process here, as that splits the HTTP server and MCP server into separate
+# processes that cannot share in-memory session state (breaking interactive mode).
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PID_FILE="/tmp/artifact_ui/server.pid"
+PORT=8765
+KILLED=0
 
-if [ -f "$PID_FILE" ]; then
-  kill "$(cat "$PID_FILE")" 2>/dev/null && echo "Stopped server." || echo "Process already gone."
-  rm -f "$PID_FILE"
-else
-  echo "No PID file found — server may not be running."
+# Kill any process holding the port
+PIDS=$(lsof -ti ":$PORT" 2>/dev/null || true)
+if [ -n "$PIDS" ]; then
+  echo $PIDS | xargs kill 2>/dev/null && echo "Killed process(es) on port $PORT: $PIDS." || true
+  KILLED=1
 fi
 
-"$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/server.py" &
-echo "Started server (PID $!)."
+# Also kill any stray server.py processes from this project
+STRAY=$(pgrep -f "artifact-ui/server.py" 2>/dev/null || true)
+if [ -n "$STRAY" ]; then
+  echo $STRAY | xargs kill 2>/dev/null && echo "Killed stray server.py (PID $STRAY)." || true
+  KILLED=1
+fi
+
+[ $KILLED -eq 0 ] && echo "No running artifact-ui servers found." || true
+echo "Done. Reconnect via /mcp to start a fresh server."
