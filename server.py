@@ -1,5 +1,7 @@
 import asyncio
+import atexit
 import json
+import os
 import socket
 import sys
 import webbrowser
@@ -43,7 +45,41 @@ window.artifact = {{
     }});
   }}
 }};
-</script>"""
+function __artifactSave() {{
+  var blob = new Blob([document.documentElement.outerHTML], {{type: 'text/html'}});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '{artifact_id}.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}}
+</script>
+<style>
+#__artifact_save_btn {{
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 99999;
+  background: #1e293b;
+  color: #94a3b8;
+  border: 1.5px solid #334155;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.75rem;
+  font-family: system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+}}
+#__artifact_save_btn:hover {{
+  opacity: 1;
+  border-color: #3b82f6;
+  color: #e2e8f0;
+}}
+</style>
+<button id="__artifact_save_btn" onclick="__artifactSave()">⬇ Save</button>"""
     if "</body>" in html:
         return html.replace("</body>", snippet + "\n</body>", 1)
     return html + "\n" + snippet
@@ -160,6 +196,10 @@ def port_in_use(port: int) -> bool:
 
 
 async def main() -> None:
+    pid_file = ARTIFACT_DIR / "server.pid"
+    pid_file.write_text(str(os.getpid()))
+    atexit.register(lambda: pid_file.unlink(missing_ok=True))
+
     coroutines = []
 
     if not port_in_use(PORT):
