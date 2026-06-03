@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "templates": {
+    "stat_cards": {
+      "name": "stat_cards",
+      "description": "Grid of KPI stat cards each with a label, large value, and optional trend delta — use for dashboards and metric overviews.",
+      "schema_example": {
+        "title": "Q2 Overview",
+        "columns": 4,
+        "cards": [
+          {
+            "label": "Revenue",
+            "value": "$2.4M",
+            "delta": "▲ 18% vs last month",
+            "delta_positive": true
+          },
+          {
+            "label": "Churn Rate",
+            "value": "2.1%",
+            "delta": "▼ 0.3pp vs last month",
+            "delta_positive": false
+          }
+        ]
+      },
+      "module": "learned_templates/stat_cards.py",
+      "created_at": "2026-06-03T03:29:41.857768+00:00"
+    },
+    "architecture_diagram": {
+      "name": "architecture_diagram",
+      "description": "A layered software architecture diagram with color-coded boxes, directional arrows between layers, and a legend — use for visualizing system components and data flow.",
+      "schema_example": {
+        "title": "MY SYSTEM",
+        "subtitle": "React Library · Some description",
+        "layers": [
+          {
+            "label": "Consumer Layer",
+            "boxes": [
+              {
+                "title": "App A",
+                "color": "teal",
+                "span": 1,
+                "items": [
+                  "Feature 1",
+                  "Feature 2"
+                ],
+                "file": "examples/app-a/"
+              }
+            ]
+          },
+          {
+            "label": "Core Layer",
+            "arrows": [
+              {
+                "label": "initialize()"
+              },
+              {
+                "label": "raw data"
+              },
+              {
+                "label": "spec"
+              }
+            ],
+            "boxes": [
+              {
+                "title": "State Store",
+                "color": "purple",
+                "span": 1,
+                "items": [
+                  "slice 1",
+                  "slice 2"
+                ],
+                "file": "src/store/"
+              }
+            ]
+          }
+        ],
+        "legend": [
+          {
+            "color": "#58a6ff",
+            "bg": "#1f6feb33",
+            "label": "Entry"
+          },
+          {
+            "color": "#3fb950",
+            "bg": "#23863633",
+            "label": "Components"
+          }
+        ]
+      },
+      "reasoning": "Architecture diagrams are one of the most common visualization requests in engineering contexts. The pattern — named layers, typed boxes with titles/bullets/file paths, arrows with labels, and a color legend — is stable and reusable across any codebase or system design.",
+      "module": "learned_templates/architecture_diagram.py",
+      "created_at": "2026-06-03T03:42:37.555316+00:00"
+    },
+    "deployment_timeline": {
+      "name": "deployment_timeline",
+      "description": "Vertical timeline of deployment events, each with a status-colored dot, title, timestamp, description, and badge — use for CI/CD history, release logs, or any ordered event feed.",
+      "schema_example": {
+        "title": "Deployment Timeline",
+        "events": [
+          {"title": "v2.4.1 deployed to production", "timestamp": "2m ago", "description": "Auth service · 3 containers · 0 errors", "status": "success"},
+          {"title": "Canary rollout started", "timestamp": "18m ago", "description": "API gateway · 10% traffic shifted", "status": "in progress"},
+          {"title": "Build #1042 queued", "timestamp": "34m ago", "description": "triggered by push to main · jacksons107", "status": "queued"},
+          {"title": "v2.4.0 rollback triggered", "timestamp": "2h ago", "description": "P95 latency spike · auto-rollback policy", "status": "failed"}
+        ]
+      },
+      "reasoning": "Deployment timelines appear constantly in DevOps, CI/CD, and observability contexts. The status-colored dot + card pattern is stable and reusable across any event log where items have a status, timestamp, and short description.",
+      "module": "learned_templates/deployment_timeline.py",
+      "created_at": "2026-06-02T00:00:00+00:00"
+    }
+  }
+}

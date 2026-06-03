@@ -19,14 +19,22 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
 from templates import render_chart, render_form, render_markdown, render_options, render_table
+import compose as compose_module
+import template_loader
+from template_extractor import save_template, spawn_extractor_agent
 
-TEMPLATE_RENDERERS = {
+BUILTIN_RENDERERS = {
     "options": render_options,
     "table": render_table,
     "markdown": render_markdown,
     "form": render_form,
     "chart": render_chart,
+    "compose": lambda data: compose_module.render_compose(
+        data, {**BUILTIN_RENDERERS, **template_loader.get_all_renderers()}.get
+    ),
 }
+
+template_loader.load_learned_templates()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -121,30 +129,62 @@ async def receive_event(body: ArtifactEvent):
 
 # ── MCP tools ─────────────────────────────────────────────────────────────────
 
+LEARN_TEMPLATE_DESCRIPTION = """\
+Save a reusable template extracted from raw HTML you just generated.
+
+Call this immediately after any render_artifact call that used the raw 'html' field.
+Analyze the HTML you generated, identify the repeating UI pattern, parameterize it, \
+and provide a Python render function so future similar UIs can use template+data instead of raw HTML.
+
+Rules for the 'code' field:
+- Signature: def render_{name}(data: dict) -> str:
+- Returns a complete HTML document (DOCTYPE through </html>)
+- Tailwind CDN only: <script src="https://cdn.tailwindcss.com"></script>
+- Dark slate theme (bg-slate-900, slate color palette)
+- Must contain </body> tag
+- Escape all literal JS/CSS braces as {{ and }}
+- Use data.get() with sensible defaults
+- Only stdlib imports (json, html) — no third-party Python packages
+"""
+
+
 @mcp_server.list_tools()
 async def list_tools() -> list[types.Tool]:
+    template_loader.load_learned_templates()
     return [
         types.Tool(
+            name="learn_template",
+            description=LEARN_TEMPLATE_DESCRIPTION,
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Short snake_case identifier, e.g. 'metric_cards', 'status_timeline'.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "One sentence: what this UI pattern is and when to use it.",
+                    },
+                    "schema_example": {
+                        "type": "object",
+                        "description": "Minimal JSON example showing the data structure the function expects.",
+                    },
+                    "code": {
+                        "type": "string",
+                        "description": "The complete Python render function as a string.",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "1-2 sentences: why this pattern is worth a reusable template and what makes it general rather than one-off.",
+                    },
+                },
+                "required": ["name", "description", "schema_example", "code", "reasoning"],
+            },
+        ),
+        types.Tool(
             name="render_artifact",
-            description=(
-                "Render an artifact in a browser tab.\n\n"
-                "PREFER templates over raw html — they require ~200 tokens of JSON vs 5000 tokens of HTML.\n\n"
-                "TEMPLATES (use template + data):\n"
-                "• options  — interactive list of choices; user clicks one, returns {selected, label}\n"
-                "  data: {title, description?, options: [{value, label, description?, icon?}]}\n"
-                "• table    — sortable data table (immediate)\n"
-                "  data: {title?, columns: [...], rows: [[...], ...], sortable?}\n"
-                "• markdown — rendered markdown with code highlighting (immediate)\n"
-                "  data: {content: '# md string', theme?: 'dark'|'light'}\n"
-                "• form     — labeled inputs with submit button (interactive); returns {field_name: value, ...}\n"
-                "  data: {title?, description?, fields: [{name, label, type, placeholder?, options?, required?, default?}], submit_label?}\n"
-                "  field types: text | textarea | select | checkbox | number | email | password\n"
-                "• chart    — bar/line/pie chart via Chart.js (immediate)\n"
-                "  data: {type: 'bar'|'line'|'pie', title?, labels: [...], datasets: [{label, data: [...]}], y_label?}\n\n"
-                "RAW HTML (use html field): Only when no template fits. window.artifact.submit(payload) is injected automatically.\n\n"
-                "mode: 'immediate' returns at once. 'interactive' blocks until window.artifact.submit(payload) is called in browser.\n"
-                "Prefer render_artifact(mode='interactive') over AskUserQuestion for decisions."
-            ),
+            description=template_loader.build_tool_description(),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -161,11 +201,7 @@ async def list_tools() -> list[types.Tool]:
                         "enum": ["immediate", "interactive"],
                         "description": "'immediate' returns at once. 'interactive' blocks until window.artifact.submit(payload) is called.",
                     },
-                    "template": {
-                        "type": "string",
-                        "enum": ["options", "table", "markdown", "form", "chart"],
-                        "description": "Use a built-in template with 'data' instead of writing full HTML. Much faster.",
-                    },
+                    "template": template_loader.build_template_schema_property(),
                     "data": {
                         "type": "object",
                         "description": "JSON data for the chosen template. See tool description for schemas.",
@@ -183,6 +219,20 @@ async def list_tools() -> list[types.Tool]:
 
 @mcp_server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    if name == "learn_template":
+        ok, reason = save_template(
+            name=arguments["name"],
+            description=arguments["description"],
+            schema_example=arguments.get("schema_example", {}),
+            code=arguments["code"],
+            reasoning=arguments.get("reasoning", ""),
+        )
+        if ok:
+            result = {"status": "saved", "name": arguments["name"]}
+        else:
+            result = {"status": "rejected", "reason": reason}
+        return [types.TextContent(type="text", text=json.dumps(result))]
+
     if name != "render_artifact":
         raise ValueError(f"Unknown tool: {name}")
 
@@ -191,14 +241,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     template = arguments.get("template")
 
     if template:
-        renderer = TEMPLATE_RENDERERS.get(template)
+        all_renderers = {**BUILTIN_RENDERERS, **template_loader.get_all_renderers()}
+        renderer = all_renderers.get(template)
         if renderer is None:
-            raise ValueError(f"Unknown template: {template!r}. Valid: {list(TEMPLATE_RENDERERS)}")
+            raise ValueError(f"Unknown template: {template!r}. Valid: {list(all_renderers)}")
         html = renderer(arguments.get("data") or {})
     else:
         html = arguments.get("html")
         if not html:
             raise ValueError("Either 'template'+'data' or 'html' must be provided.")
+        asyncio.create_task(spawn_extractor_agent(html))
 
     # Inject runtime and write to temp file
     html = inject_runtime(html, artifact_id)
