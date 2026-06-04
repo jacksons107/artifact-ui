@@ -8,7 +8,7 @@ PROJECT_DIR = Path(__file__).parent
 LEARNED_DIR = PROJECT_DIR / "learned_templates"
 REGISTRY_PATH = LEARNED_DIR / "registry.json"
 
-BUILTIN_NAMES = {"options", "table", "markdown", "form", "chart", "compose"}
+BUILTIN_NAMES = {"compose"}
 
 _learned_renderers: dict[str, Callable] = {}
 _registry_meta: dict[str, dict] = {}
@@ -66,39 +66,75 @@ def get_learned_meta() -> dict[str, dict]:
 
 def build_tool_description() -> str:
     base = (
-        "Render an artifact in a browser tab.\n\n"
-        "PREFER templates over raw html — they require ~200 tokens of JSON vs 5000 tokens of HTML.\n\n"
-        "BUILT-IN TEMPLATES (use template + data):\n"
-        "• options  — interactive list of choices; user clicks one, returns {selected, label}\n"
-        "  data: {title, description?, options: [{value, label, description?, icon?}]}\n"
-        "• table    — sortable data table (immediate)\n"
-        "  data: {title?, columns: [...], rows: [[...], ...], sortable?}\n"
-        "• markdown — rendered markdown with code highlighting (immediate)\n"
-        "  data: {content: '# md string', theme?: 'dark'|'light'}\n"
-        "• form     — labeled inputs with submit button (interactive); returns {field_name: value, ...}\n"
-        "  data: {title?, description?, fields: [{name, label, type, placeholder?, options?, required?, default?}], submit_label?}\n"
-        "  field types: text | textarea | select | checkbox | number | email | password\n"
-        "• chart    — bar/line/pie chart via Chart.js (immediate)\n"
-        "  data: {type: 'bar'|'line'|'pie', title?, labels: [...], datasets: [{label, data: [...]}], y_label?}\n"
-        "• compose  — combine multiple templates into one page (best with immediate-mode sub-templates)\n"
-        "  data: {title?, layout: 'stack'|'grid', items: [{template, data}]}\n\n"
+        "Render an artifact in a browser tab using the Acme design system "
+        "(ivory/slate/clay palette, serif headings, no Tailwind).\n\n"
+
+        "── WORKFLOW ──────────────────────────────────────────────────────────────\n"
+        "1. Call get_example(name) to find the closest example → inspect + adapt it.\n"
+        "2. Call render_artifact(template='compose', data={...}) with your payload.\n"
+        "3. For interactive JS inside a compose page: use {html: '<div>...</div><script>...</script>'} items.\n"
+        "4. Raw html field: ONLY for a genuinely novel atom (new visual component that doesn't\n"
+        "   exist in the primitive/organism vocabulary). Never for full page layouts.\n\n"
+
+        "── ORGANISMS — prefer these, they handle the heavy lifting ───────────────\n"
+        "  event_timeline   {entries: [{time, body, state: neutral|impact|mitigated|success|warning|error}]}\n"
+        "  milestone_timeline {milestones: [{date, title, description?, tags?, done?}]}\n"
+        "  bar_chart        {bars: [{label, value, highlight?}], y_max?, caption?}\n"
+        "  file_section     {path, additions, deletions, risk: safe|medium|high, hunks, comments}\n"
+        "  shipped_item_list {items: [{title, description, reference, color?}]}\n"
+        "  callout          {content, variant: dark|tinted, label?}\n"
+        "  action_checklist {items: [{avatar, description, due?, done?}]}\n"
+        "  decision_card    {question, context, options: [{label, suggested?}]}\n"
+        "  code_block       {filename?, language?, code} or {tabs: [{label, code, active?}]}\n"
+        "  drag_list        {title?, items: [{label, count?}]}  // native drag-to-reorder\n"
+        "  step_list        {steps: [{title, body?, code?}]}\n"
+        "  two_col_compare  {cols: [{header, items:[...]}, {header, items:[...]}]}  // recursive\n"
+        "  flow_diagram     {nodes:[{id,label,sublabel?,accent?:clay|olive|rust|gray,primitive?,width?,height?}],\n"
+        "                    edges:[{from,to,label?,style?:solid|dashed}],\n"
+        "                    direction?:TB|LR, node_width?,node_height?,h_gap?,v_gap?,caption?}\n\n"
+
+        "── PRIMITIVES — lower-level building blocks ──────────────────────────────\n"
+        "  Layouts (recursive):  v_stack {items,gap?} · grid {items,cols:2|3|4,gap?} · sidebar_layout {main:[],sidebar:[]}\n"
+        "  Content:   page_header {title,eyebrow?,description?,pill?} · section_header {title} · divider\n"
+        "             prose {text?,items?} · bullet_list {items:[str|{strong,text}]}\n"
+        "             badge {text,tone:neutral|accent|success|warning|danger|outlined}\n"
+        "             avatar {initials,color?:o2|o3|o4,bordered?} · button {text,variant:primary|secondary|ghost|danger}\n"
+        "             chip {text,tone?:olive|clay|rust}\n"
+        "  Data:      stat_card {number,label,delta?,delta_direction?:up|flat|down,warning?}\n"
+        "             card {variant:flat|outlined|elevated|stripe|inset|horizontal,title?,subtitle?,\n"
+        "                   tags?,initials?,actions?:[{text,variant}],content?:html_str}\n"
+        "             table {columns:[str],rows:[[cell,...]]}  cell: str or {type:link|risk|badge|mono,...}\n"
+        "             inset_panel {items:[{tag,text,note?}]}\n"
+        "  Code review: diff_block {hunks:[{type:ctx|add|del|hunk,line?,code}]}\n"
+        "               comment_thread {comments:[{severity:blocking|nit|suggest,anchor?,text}]}\n"
+        "  Kanban:    kanban_board {columns:[{title,accent?:clay|olive|gray|light,id?,tickets:[...]}]}\n"
+        "             ticket {id,title,tag?:bug|feat|chore|debt,estimate?:S|M|L,owner_initials?,owner_class?}\n"
+        "  Escape:    {html:'<div>...</div><script>...</script>'}  // inline any HTML+JS fragment\n\n"
+
+        "── COMPOSE DATA SCHEMA ───────────────────────────────────────────────────\n"
+        "  {title, wide?:bool, header?:{eyebrow?,title,description?,pill?},\n"
+        "   sections:[{header?:str, layout:'stack'|'grid'|'sidebar'|'kanban',\n"
+        "              cols?:2|3|4, gap?:int,\n"
+        "              items?:[<item>],          // stack|grid|kanban\n"
+        "              main?:[<item>], sidebar?:[<item>]}]}  // sidebar layout\n\n"
     )
 
     meta = get_learned_meta()
     if meta:
-        base += "LEARNED TEMPLATES (extracted from past raw HTML calls — use these before writing raw HTML):\n"
+        base += "── LEARNED TEMPLATES ─────────────────────────────────────────────────────\n"
         for entry in meta.values():
             base += (
-                f"• {entry['name']}  — {entry['description']}\n"
-                f"  schema_example: {json.dumps(entry['schema_example'])}\n"
+                f"  {entry['name']}  — {entry['description']}\n"
+                f"    schema: {json.dumps(entry['schema_example'])}\n"
             )
         base += "\n"
 
     base += (
-        "RAW HTML (use html field): Only when no template fits. "
-        "window.artifact.submit(payload) is injected automatically. "
-        "Raw HTML calls trigger background extraction to learn a new template.\n\n"
-        "mode: 'immediate' returns at once. 'interactive' blocks until window.artifact.submit(payload) is called in browser.\n"
+        "── RAW HTML ──────────────────────────────────────────────────────────────\n"
+        "Use html field only for a novel low-level component (a new atom not in the vocabulary above).\n"
+        "Never for whole page layouts — use compose + {html:...} items instead.\n"
+        "window.artifact.submit(payload) is injected automatically.\n\n"
+        "mode: 'immediate' returns at once. 'interactive' blocks until window.artifact.submit(payload) is called.\n"
         "Prefer render_artifact(mode='interactive') over AskUserQuestion for decisions."
     )
     return base
@@ -110,7 +146,7 @@ def build_template_schema_property() -> dict:
     return {
         "type": "string",
         "description": (
-            f"Template name. Built-ins: options, table, markdown, form, chart, compose. "
+            f"Template name. Built-in: compose. "
             f"Learned: {learned_str}. "
             "Use the 'data' field with this."
         ),
