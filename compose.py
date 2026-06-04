@@ -1,67 +1,146 @@
-import re
-from typing import Callable
+import html as _html
+import primitives
+import organisms
+from design_system import page_wrapper
+
+PRIMITIVE_RENDERERS = {
+    # ── Atoms / Molecules (primitives.py) ──
+    "page_header":    primitives.page_header,
+    "section_header": primitives.section_header,
+    "divider":        primitives.divider,
+    "badge":          primitives.badge,
+    "avatar":         primitives.avatar,
+    "button":         primitives.button,
+    "chip":           primitives.chip,
+    "prose":          primitives.prose,
+    "card":           primitives.card,
+    "stat_card":      primitives.stat_card,
+    "table":          primitives.table,
+    "bullet_list":    primitives.bullet_list,
+    "inset_panel":    primitives.inset_panel,
+    "diff_block":     primitives.diff_block,
+    "diff_comment":   primitives.diff_comment,
+    "comment_thread": primitives.comment_thread,
+    "ticket":         primitives.ticket,
+    "kanban_column":  primitives.kanban_column,
+    "kanban_board":   primitives.kanban_board,
+
+    # ── Organisms (organisms.py) ──
+    "event_timeline":    organisms.event_timeline,
+    "milestone_timeline": organisms.milestone_timeline,
+    "bar_chart":         organisms.bar_chart,
+    "file_section":      organisms.file_section,
+    "shipped_item_list": organisms.shipped_item_list,
+    "callout":           organisms.callout,
+    "action_checklist":  organisms.action_checklist,
+    "decision_card":     organisms.decision_card,
+    "code_block":        organisms.code_block,
+    "drag_list":         organisms.drag_list,
+    "step_list":         organisms.step_list,
+    "flow_diagram":      organisms.flow_diagram,
+}
 
 
-def _extract_head_assets(html: str) -> list[str]:
-    head_match = re.search(r"<head[^>]*>(.*?)</head>", html, re.DOTALL | re.IGNORECASE)
-    if not head_match:
-        return []
-    head = head_match.group(1)
-    tags = re.findall(
-        r'<(?:script|link)\s[^>]*(?:src|href)=["\'][^"\']+["\'][^>]*(?:/>|></script>|>)',
-        head,
-        re.IGNORECASE,
-    )
-    return tags
+def _render_item(item: dict | str, render_fn) -> str:
+    if isinstance(item, str):
+        return item
+
+    primitive = item.get("primitive", "")
+
+    if primitive == "v_stack":
+        items_html = "".join(render_fn(i) for i in item.get("items", []))
+        gap = item.get("gap", 16)
+        return f'<div class="layout-stack" style="gap:{gap}px">{items_html}</div>'
+
+    if primitive == "grid":
+        items_html = "".join(render_fn(i) for i in item.get("items", []))
+        cols = item.get("cols", 3)
+        gap  = item.get("gap")
+        style = f' style="gap:{gap}px"' if gap else ""
+        return f'<div class="layout-grid-{_e(cols)}"{style}>{items_html}</div>'
+
+    if primitive == "sidebar_layout":
+        main_html    = "".join(render_fn(i) for i in item.get("main", []))
+        sidebar_html = "".join(render_fn(i) for i in item.get("sidebar", []))
+        return (
+            '<div class="layout-sidebar">'
+            f'<div class="main-content">{main_html}</div>'
+            f'<div class="sidebar">{sidebar_html}</div>'
+            '</div>'
+        )
+
+    if primitive == "two_col_compare":
+        cols = item.get("cols", [{}, {}])
+        left, right = cols[0] if len(cols) > 0 else {}, cols[1] if len(cols) > 1 else {}
+        left_html  = "".join(render_fn(i) for i in left.get("items", []))
+        right_html = "".join(render_fn(i) for i in right.get("items", []))
+        return organisms.two_col_compare_from_html(
+            left.get("header", ""), left_html,
+            right.get("header", ""), right_html,
+        )
+
+    if "html" in item:
+        return item["html"]
+
+    renderer = PRIMITIVE_RENDERERS.get(primitive)
+    if renderer:
+        return renderer(item)
+
+    return f'<div class="text-sm mono text-muted" style="color:var(--rust)">unknown primitive: {_html.escape(primitive)}</div>'
 
 
-def _extract_body_content(html: str) -> str:
-    match = re.search(r"<body[^>]*>(.*)</body>", html, re.DOTALL | re.IGNORECASE)
-    return match.group(1).strip() if match else html
+def _e(v) -> str:
+    return str(v)
 
 
-def render_compose(data: dict, get_renderer: Callable) -> str:
-    title = data.get("title", "Composed View")
-    layout = data.get("layout", "stack")
-    items = data.get("items", [])
+def _render_section(section: dict, render_fn) -> str:
+    header  = section.get("header", "")
+    items   = section.get("items", [])
+    layout  = section.get("layout", "stack")
+    cols    = section.get("cols", 3)
+    gap     = section.get("gap")
 
-    all_assets: list[str] = []
-    seen_assets: set[str] = set()
-    body_fragments: list[str] = []
+    header_html = primitives.section_header({"title": header}) if header else ""
+    style = f' style="gap:{gap}px"' if gap else ""
 
-    for item in items:
-        template_name = item.get("template", "")
-        item_data = item.get("data", {})
-        renderer = get_renderer(template_name)
-        if renderer is None:
-            body_fragments.append(
-                f'<div class="p-4 text-red-400 font-mono text-sm">Unknown template: {template_name}</div>'
-            )
-            continue
-        sub_html = renderer(item_data)
-        for asset in _extract_head_assets(sub_html):
-            if asset not in seen_assets:
-                all_assets.append(asset)
-                seen_assets.add(asset)
-        body_fragments.append(_extract_body_content(sub_html))
+    if layout == "grid":
+        items_html = "".join(render_fn(i) for i in items)
+        content = f'<div class="layout-grid-{cols}"{style}>{items_html}</div>'
 
-    grid_class = "grid grid-cols-2 gap-6" if layout == "grid" else "flex flex-col gap-6"
+    elif layout == "sidebar":
+        main_items    = section.get("main", items)
+        sidebar_items = section.get("sidebar", [])
+        main_html    = "".join(render_fn(i) for i in main_items)
+        sidebar_html = "".join(render_fn(i) for i in sidebar_items)
+        content = (
+            '<div class="layout-sidebar">'
+            f'<div class="main-content">{main_html}</div>'
+            f'<div class="sidebar">{sidebar_html}</div>'
+            '</div>'
+        )
 
-    items_html = "\n".join(
-        f'<div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">{frag}</div>'
-        for frag in body_fragments
-    )
+    elif layout == "kanban":
+        items_html = "".join(render_fn(i) for i in items)
+        content = items_html
 
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>{title}</title>
-  {"".join(all_assets)}
-</head>
-<body class="bg-slate-900 min-h-screen p-6">
-  <div class="{grid_class} max-w-7xl mx-auto">
-    {items_html}
-  </div>
-</body>
-</html>"""
+    else:  # stack (default)
+        items_html = "".join(render_fn(i) for i in items)
+        content = f'<div class="layout-stack"{style}>{items_html}</div>'
+
+    return f'<div class="section">{header_html}{content}</div>'
+
+
+def render_compose(data: dict) -> str:
+    title        = data.get("title", "Untitled")
+    header_data  = data.get("header")
+    sections_data = data.get("sections", [])
+    wide         = data.get("wide", False)
+    extra_css    = data.get("css", "")
+
+    def render_fn(item):
+        return _render_item(item, render_fn)
+
+    header_html   = primitives.page_header(header_data) if header_data else ""
+    sections_html = "".join(_render_section(s, render_fn) for s in sections_data)
+
+    return page_wrapper(title, header_html + sections_html, extra_css=extra_css, wide=wide)

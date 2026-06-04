@@ -93,12 +93,13 @@ RESERVED NAMES (do not use): {reserved}
 RULES for the Python render function:
 - Signature exactly: def render_{{name}}(data: dict) -> str:
 - Returns a complete HTML document (DOCTYPE through </html>)
-- Load Tailwind via CDN only: <script src="https://cdn.tailwindcss.com"></script>
-- Dark slate theme: bg-slate-900 body, slate color palette throughout
+- Use the project design system: from design_system import page_wrapper, BASE_CSS
+- Ivory/slate/clay color palette (no Tailwind); all tokens and component CSS are in design_system.BASE_CSS
+- You may also call functions from primitives.py (e.g. from primitives import stat_card, table)
 - Must contain </body> tag (required by the server)
 - Escape all literal JS/CSS braces as {{{{ and }}}}
 - Use data.get() with sensible defaults — never assume a key exists
-- Only stdlib imports (json, html) — no third-party Python packages
+- Only stdlib imports (json, html) plus design_system and primitives from this project
 - Keep the function under 80 lines
 
 STEPS — do all of these in order:

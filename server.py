@@ -18,20 +18,13 @@ from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
-from templates import render_chart, render_form, render_markdown, render_options, render_table
 import compose as compose_module
 import template_loader
+import compose_examples
 from template_extractor import save_template, spawn_extractor_agent
 
 BUILTIN_RENDERERS = {
-    "options": render_options,
-    "table": render_table,
-    "markdown": render_markdown,
-    "form": render_form,
-    "chart": render_chart,
-    "compose": lambda data: compose_module.render_compose(
-        data, {**BUILTIN_RENDERERS, **template_loader.get_all_renderers()}.get
-    ),
+    "compose": compose_module.render_compose,
 }
 
 template_loader.load_learned_templates()
@@ -80,21 +73,21 @@ function __artifactSave() {{
   bottom: 16px;
   right: 16px;
   z-index: 99999;
-  background: #1e293b;
-  color: #94a3b8;
-  border: 1.5px solid #334155;
+  background: #FAF9F5;
+  color: #87867F;
+  border: 1.5px solid #D1CFC5;
   border-radius: 8px;
   padding: 7px 14px;
   font-size: 0.75rem;
-  font-family: system-ui, sans-serif;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   cursor: pointer;
-  opacity: 0.6;
+  opacity: 0.7;
   transition: opacity 0.15s, border-color 0.15s, color 0.15s;
 }}
 #__artifact_save_btn:hover {{
   opacity: 1;
-  border-color: #3b82f6;
-  color: #e2e8f0;
+  border-color: #D97757;
+  color: #141413;
 }}
 </style>
 <button id="__artifact_save_btn" onclick="__artifactSave()">⬇ Save</button>"""
@@ -139,12 +132,13 @@ and provide a Python render function so future similar UIs can use template+data
 Rules for the 'code' field:
 - Signature: def render_{name}(data: dict) -> str:
 - Returns a complete HTML document (DOCTYPE through </html>)
-- Tailwind CDN only: <script src="https://cdn.tailwindcss.com"></script>
-- Dark slate theme (bg-slate-900, slate color palette)
+- Use the project design system: from design_system import page_wrapper, BASE_CSS
+- Ivory/slate/clay color palette (no Tailwind); see design_system.py for all tokens and component CSS
+- You may also import and call functions from primitives.py for common components
 - Must contain </body> tag
 - Escape all literal JS/CSS braces as {{ and }}
 - Use data.get() with sensible defaults
-- Only stdlib imports (json, html) — no third-party Python packages
+- Only stdlib imports (json, html) plus design_system and primitives from this project
 """
 
 
@@ -180,6 +174,26 @@ async def list_tools() -> list[types.Tool]:
                     },
                 },
                 "required": ["name", "description", "schema_example", "code", "reasoning"],
+            },
+        ),
+        types.Tool(
+            name="get_example",
+            description=(
+                "Return the full compose JSON payload for a named example page. "
+                "Call this BEFORE writing raw HTML — inspect the example to understand what the "
+                "primitive + organism system can produce, then adapt it for your task. "
+                "Available: " + ", ".join(compose_examples.EXAMPLES.keys())
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Example name. One of: " + ", ".join(compose_examples.EXAMPLES.keys()),
+                        "enum": list(compose_examples.EXAMPLES.keys()),
+                    }
+                },
+                "required": ["name"],
             },
         ),
         types.Tool(
@@ -219,6 +233,15 @@ async def list_tools() -> list[types.Tool]:
 
 @mcp_server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    if name == "get_example":
+        example_name = arguments.get("name", "")
+        example = compose_examples.EXAMPLES.get(example_name)
+        if example is None:
+            result = {"error": f"Unknown example: {example_name!r}", "available": list(compose_examples.EXAMPLES.keys())}
+        else:
+            result = example
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
     if name == "learn_template":
         ok, reason = save_template(
             name=arguments["name"],
