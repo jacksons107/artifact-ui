@@ -19,12 +19,15 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
 import compose as compose_module
+import system_spec as system_spec_module
 import template_loader
 import compose_examples
+import system_spec_examples
 from template_extractor import save_template, spawn_extractor_agent
 
 BUILTIN_RENDERERS = {
-    "compose": compose_module.render_compose,
+    "compose":      compose_module.render_compose,
+    "system_spec":  system_spec_module.render_system_spec,
 }
 
 template_loader.load_learned_templates()
@@ -179,18 +182,22 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="get_example",
             description=(
-                "Return the full compose JSON payload for a named example page. "
-                "Call this BEFORE writing raw HTML — inspect the example to understand what the "
-                "primitive + organism system can produce, then adapt it for your task. "
-                "Available: " + ", ".join(compose_examples.EXAMPLES.keys())
+                "Return the full JSON payload for a named example. "
+                "Call this BEFORE constructing any template data — inspect the example to understand "
+                "the correct shape, then adapt it for your task. "
+                "Compose examples: " + ", ".join(compose_examples.EXAMPLES.keys()) + ". "
+                "System spec examples (use with template='system_spec'): " + ", ".join(system_spec_examples.EXAMPLES.keys()) + "."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Example name. One of: " + ", ".join(compose_examples.EXAMPLES.keys()),
-                        "enum": list(compose_examples.EXAMPLES.keys()),
+                        "description": (
+                            "Example name. Compose: " + ", ".join(compose_examples.EXAMPLES.keys()) + ". "
+                            "System spec: " + ", ".join(system_spec_examples.EXAMPLES.keys()) + "."
+                        ),
+                        "enum": list(compose_examples.EXAMPLES.keys()) + list(system_spec_examples.EXAMPLES.keys()),
                     }
                 },
                 "required": ["name"],
@@ -235,9 +242,10 @@ async def list_tools() -> list[types.Tool]:
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     if name == "get_example":
         example_name = arguments.get("name", "")
-        example = compose_examples.EXAMPLES.get(example_name)
+        all_examples = {**compose_examples.EXAMPLES, **system_spec_examples.EXAMPLES}
+        example = all_examples.get(example_name)
         if example is None:
-            result = {"error": f"Unknown example: {example_name!r}", "available": list(compose_examples.EXAMPLES.keys())}
+            result = {"error": f"Unknown example: {example_name!r}", "available": list(all_examples.keys())}
         else:
             result = example
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]

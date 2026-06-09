@@ -8,7 +8,7 @@ PROJECT_DIR = Path(__file__).parent
 LEARNED_DIR = PROJECT_DIR / "learned_templates"
 REGISTRY_PATH = LEARNED_DIR / "registry.json"
 
-BUILTIN_NAMES = {"compose"}
+BUILTIN_NAMES = {"compose", "system_spec"}
 
 _learned_renderers: dict[str, Callable] = {}
 _registry_meta: dict[str, dict] = {}
@@ -116,7 +116,23 @@ def build_tool_description() -> str:
         "   sections:[{header?:str, layout:'stack'|'grid'|'sidebar'|'kanban',\n"
         "              cols?:2|3|4, gap?:int,\n"
         "              items?:[<item>],          // stack|grid|kanban\n"
-        "              main?:[<item>], sidebar?:[<item>]}]}  // sidebar layout\n\n"
+        "              main?:[<item>], sidebar?:[<item>]}]}  // sidebar layout\n"
+        "  Every <item> must be {primitive:'<name>', ...fields} or a layout wrapper or {html:'...'}.\n"
+        "  A bare organism payload is NOT valid top-level data — always wrap in sections[].items[].\n\n"
+
+        "── SYSTEM SPEC (template='system_spec') ──────────────────────────────────\n"
+        "  Use for standalone codebase/architecture explainers. The LLM describes what exists;\n"
+        "  the renderer handles all layout, colors, and interactivity automatically.\n"
+        "  Call get_example('sys_microservices') or get_example('sys_event_driven') to see full examples.\n\n"
+        "  node kinds:  service | module | class | db | queue | external | package | file | function\n"
+        "  edge kinds:  calls | imports | depends | emits | subscribes | reads | writes | deploys | owns\n"
+        "  group kinds: layer | package | team | domain | deployment\n\n"
+        "  Schema:\n"
+        "  {title, description?,\n"
+        "   nodes: [{id, label, kind?, description?, tech?, tags?:[], status?, owner?}],\n"
+        "   edges: [{from, to, kind?, label?, async?:bool, protocol?}],\n"
+        "   groups?: [{id, label, kind?, members:[node_id,...]}],\n"
+        "   sequences?: [{id, label, steps:[{from, to, label?}]}]}\n\n"
     )
 
     meta = get_learned_meta()
@@ -146,7 +162,7 @@ def build_template_schema_property() -> dict:
     return {
         "type": "string",
         "description": (
-            f"Template name. Built-in: compose. "
+            f"Template name. Built-in: compose, system_spec. "
             f"Learned: {learned_str}. "
             "Use the 'data' field with this."
         ),
