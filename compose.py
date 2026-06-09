@@ -137,6 +137,15 @@ def render_compose(data: dict) -> str:
     wide         = data.get("wide", False)
     extra_css    = data.get("css", "")
 
+    if not header_data and not sections_data:
+        raise ValueError(
+            "compose data has no 'header' and no 'sections' — this produces a blank page. "
+            "The compose template expects {title?, header?, sections:[{layout, items:[<primitive>...]}]}. "
+            "If you have a single primitive/organism payload (e.g. a flow_diagram with nodes/edges), "
+            "wrap it: {sections: [{layout: 'stack', items: [<that payload with 'primitive': '...'>]}]}. "
+            "Call get_example(name) to see a working reference."
+        )
+
     def render_fn(item):
         return _render_item(item, render_fn)
 
