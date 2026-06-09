@@ -462,15 +462,292 @@ def render_legend(spec: dict) -> str:
     return "".join(parts)
 
 
+# ── Layer diagram ────────────────────────────────────────────────────────────
+
+_LANE_LABEL_W = 108
+_LANE_NODE_W  = 160
+_LANE_NODE_H  = 52
+_LANE_H_GAP   = 20
+_LANE_PAD_X   = 24
+_LANE_PAD_Y   = 14
+_LANE_GAP     = 14
+
+
+def render_layer_svg(spec: dict) -> str:
+    nodes  = spec["nodes"]
+    edges  = spec["edges"]
+    groups = spec["groups"]
+
+    layer_groups = [g for g in groups if g.get("kind") == "layer"]
+    if not layer_groups:
+        return ""
+
+    node_by_id = {n["id"]: n for n in nodes}
+
+    # Nodes in at least one layer group
+    in_layer: set[str] = set()
+    for g in layer_groups:
+        in_layer.update(m for m in g.get("members", []) if m in node_by_id)
+
+    # Ungrouped nodes get their own lane
+    ungrouped = [n["id"] for n in nodes if n["id"] not in in_layer]
+    lanes = list(layer_groups)
+    if ungrouped:
+        lanes.append({"id": "_other", "label": "Other", "kind": "layer", "members": ungrouped})
+
+    # Compute max nodes in any lane → SVG width
+    max_n = max((len([m for m in g.get("members", []) if m in node_by_id or m in [n["id"] for n in nodes]]) for g in lanes), default=1)
+    content_w = max_n * _LANE_NODE_W + max(0, max_n - 1) * _LANE_H_GAP
+    SVG_W = _LANE_LABEL_W + 2 * _LANE_PAD_X + content_w
+    LANE_H = _LANE_NODE_H + 2 * _LANE_PAD_Y
+
+    # Assign positions
+    node_pos: dict[str, dict] = {}
+    node_lane_idx: dict[str, int] = {}
+    valid_lanes = []
+
+    for lane_idx, lane in enumerate(lanes):
+        members = [m for m in lane.get("members", []) if m in node_by_id]
+        if not members:
+            continue
+        valid_lanes.append(lane)
+        y_top = len(valid_lanes) * _LANE_GAP + (len(valid_lanes) - 1) * LANE_H
+        n = len(members)
+        total_w = n * _LANE_NODE_W + max(0, n - 1) * _LANE_H_GAP
+        start_x = _LANE_LABEL_W + _LANE_PAD_X + (content_w - total_w) / 2
+        for i, nid in enumerate(members):
+            x = start_x + i * (_LANE_NODE_W + _LANE_H_GAP)
+            y = y_top + _LANE_PAD_Y
+            node_pos[nid] = {"x": x, "y": y, "w": _LANE_NODE_W, "h": _LANE_NODE_H}
+            node_lane_idx[nid] = len(valid_lanes) - 1
+
+    if not valid_lanes:
+        return ""
+
+    SVG_H = len(valid_lanes) * (LANE_H + _LANE_GAP) + _LANE_GAP
+
+    parts = [
+        f'<svg viewBox="0 0 {SVG_W:.0f} {SVG_H:.0f}" '
+        f'style="display:block;width:100%;height:auto;max-height:700px" id="sys-layer-svg">'
+    ]
+    parts.append('<defs>')
+    parts.append(
+        '<marker id="larr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
+        '<path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"/></marker>'
+    )
+    parts.append('</defs>')
+
+    # Lane bands
+    for li, lane in enumerate(valid_lanes):
+        y_top = _LANE_GAP + li * (LANE_H + _LANE_GAP)
+        gst   = GROUP_KIND_STYLES.get(lane.get("kind", ""), _DEFAULT_GROUP_STYLE)
+        label = _e(lane.get("label", lane["id"]))
+        parts.append(
+            f'<rect x="0" y="{y_top:.1f}" width="{SVG_W:.0f}" height="{LANE_H}" rx="8" '
+            f'fill="{gst["fill"]}" stroke="{gst["stroke"]}" stroke-width="1"/>'
+        )
+        # Vertical separator
+        parts.append(
+            f'<line x1="{_LANE_LABEL_W}" y1="{y_top:.1f}" '
+            f'x2="{_LANE_LABEL_W}" y2="{y_top+LANE_H:.1f}" '
+            f'stroke="{gst["stroke"]}" stroke-width="0.5" opacity="0.35"/>'
+        )
+        # Lane label
+        parts.append(
+            f'<text x="{_LANE_LABEL_W/2:.1f}" y="{y_top+LANE_H/2:.1f}" '
+            f'text-anchor="middle" dominant-baseline="middle" '
+            f'font-family="ui-monospace,monospace" font-size="11" '
+            f'fill="{gst["stroke"]}" font-weight="500">{label}</text>'
+        )
+
+    # Edges (cross-lane only — same-lane as small arcs)
+    for edge in edges:
+        src, dst = edge.get("from"), edge.get("to")
+        if src not in node_pos or dst not in node_pos or src == dst:
+            continue
+        sp, dp     = node_pos[src], node_pos[dst]
+        src_li     = node_lane_idx[src]
+        dst_li     = node_lane_idx[dst]
+
+        if src_li == dst_li:
+            # Same lane: subtle arc above nodes
+            sx = sp["x"] + sp["w"] / 2
+            sy = sp["y"]
+            ex = dp["x"] + dp["w"] / 2
+            ey = dp["y"]
+            mx = (sx + ex) / 2
+            arc_y = sy - 16
+            parts.append(
+                f'<path d="M{sx:.1f},{sy:.1f} Q{mx:.1f},{arc_y:.1f} {ex:.1f},{ey:.1f}" '
+                f'fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" '
+                f'marker-end="url(#larr)"/>'
+            )
+        else:
+            # Cross-lane: bezier from bottom to top
+            sx       = sp["x"] + sp["w"] / 2
+            sy       = sp["y"] + sp["h"]
+            ex       = dp["x"] + dp["w"] / 2
+            ey       = dp["y"]
+            dy       = ey - sy
+            cx1, cy1 = sx, sy + dy * 0.4
+            cx2, cy2 = ex, ey - dy * 0.4
+            parts.append(
+                f'<path d="M{sx:.1f},{sy:.1f} C{cx1:.1f},{cy1:.1f} {cx2:.1f},{cy2:.1f} {ex:.1f},{ey:.1f}" '
+                f'fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>'
+            )
+            label = edge.get("label", "")
+            if label:
+                mx = (sx + ex) / 2
+                my = (sy + ey) / 2
+                lw = len(label) * 5.4 + 8
+                parts.append(
+                    f'<rect x="{mx-lw/2:.1f}" y="{my-8:.1f}" width="{lw:.1f}" height="13" rx="3" '
+                    f'fill="rgba(250,249,245,0.9)"/>'
+                )
+                parts.append(
+                    f'<text x="{mx:.1f}" y="{my+2:.1f}" text-anchor="middle" '
+                    f'font-family="ui-monospace,monospace" font-size="9" fill="#87867F">'
+                    f'{_e(label)}</text>'
+                )
+
+    # Nodes
+    for nid, p in node_pos.items():
+        node = node_by_id[nid]
+        x, y, w, h = p["x"], p["y"], p["w"], p["h"]
+        kind  = node.get("kind", "")
+        nst   = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+        label = _e(node.get("label", nid))
+        tech  = _e(node.get("tech", ""))
+        parts.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{w}" height="{h}" rx="8" '
+            f'fill="{nst["fill"]}" stroke="{nst["stroke"]}" stroke-width="1.5"/>'
+        )
+        label_y = f"{y + h/2 - (6 if tech else 0):.1f}"
+        parts.append(
+            f'<text x="{x + w/2:.1f}" y="{label_y}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">'
+            f'{nst["icon"]} {label}</text>'
+        )
+        if tech:
+            parts.append(
+                f'<text x="{x + w/2:.1f}" y="{y + h/2 + 10:.1f}" text-anchor="middle" '
+                f'font-family="ui-monospace,monospace" font-size="10" fill="#87867F">'
+                f'{tech}</text>'
+            )
+
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
+# ── Component list ────────────────────────────────────────────────────────────
+
+def render_component_list_html(spec: dict) -> str:
+    nodes = spec["nodes"]
+    kinds    = sorted({n.get("kind", "") for n in nodes if n.get("kind")})
+    statuses = sorted({n.get("status", "") for n in nodes if n.get("status")})
+
+    html = '<div class="sys-clist">'
+
+    # Filter chips
+    html += '<div class="sys-filters">'
+    html += '<span class="sys-fl">Kind</span>'
+    for kind in kinds:
+        nst = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+        html += (
+            f'<button class="sys-fc active" data-fk="{_e(kind)}" '
+            f'style="color:{nst["stroke"]};border-color:{nst["stroke"]}" '
+            f'onclick="sysFKind(this)">{nst["icon"]} {_e(kind)}</button>'
+        )
+    if statuses:
+        html += '<span class="sys-fl" style="margin-left:12px">Status</span>'
+        for st in statuses:
+            html += (
+                f'<button class="sys-fc active" data-fs="{_e(st)}" '
+                f'onclick="sysFStatus(this)">{_e(st)}</button>'
+            )
+    html += '</div>'
+
+    # Table
+    html += (
+        '<div class="sys-tbl-wrap">'
+        '<table class="sys-ctable"><thead><tr>'
+    )
+    for col in ["Name", "Kind", "Tech", "Owner", "Status", "Tags", "Description"]:
+        html += f'<th>{col}</th>'
+    html += '</tr></thead><tbody>'
+
+    for node in nodes:
+        nid    = node["id"]
+        kind   = node.get("kind", "")
+        nst    = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+        status = node.get("status", "")
+        tags   = node.get("tags", [])
+        tags_h = "".join(f'<span class="sys-tag">{_e(t)}</span>' for t in tags)
+
+        html += (
+            f'<tr class="sys-cr" data-rkind="{_e(kind)}" data-rstatus="{_e(status)}">'
+            f'<td><span style="color:{nst["stroke"]};margin-right:4px">{nst["icon"]}</span>'
+            f'<strong>{_e(node.get("label", nid))}</strong></td>'
+            f'<td><span class="sys-kbadge" style="color:{nst["stroke"]};border-color:{nst["stroke"]}">{_e(kind)}</span></td>'
+            f'<td class="sys-mono">{_e(node.get("tech", ""))}</td>'
+            f'<td class="sys-mono">{_e(node.get("owner", ""))}</td>'
+            f'<td class="sys-mono">{_e(status)}</td>'
+            f'<td>{tags_h}</td>'
+            f'<td class="sys-dc">{_e(node.get("description", ""))}</td>'
+            f'</tr>'
+        )
+
+    html += '</tbody></table></div></div>'
+    return html
+
+
+# ── Architecture filter bar ───────────────────────────────────────────────────
+
+def render_filter_bar(spec: dict) -> str:
+    kinds = sorted({n.get("kind", "") for n in spec["nodes"] if n.get("kind")})
+    if not kinds:
+        return ""
+    html = '<div class="sys-arch-filters">'
+    html += '<span class="sys-fl">Show</span>'
+    for kind in kinds:
+        nst = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+        html += (
+            f'<button class="sys-fc active" data-ak="{_e(kind)}" '
+            f'style="color:{nst["stroke"]};border-color:{nst["stroke"]}" '
+            f'onclick="sysAKind(this)">{nst["icon"]} {_e(kind)}</button>'
+        )
+    html += '</div>'
+    return html
+
+
 # ── Page assembly ─────────────────────────────────────────────────────────────
 
 _CSS = """
+/* ── Tabs ─────────────────────────────────────── */
+.sys-tabs { display: flex; gap: 0; border-bottom: 1.5px solid var(--gray-300); margin-bottom: 20px; }
+.sys-tab { font-family: var(--mono); font-size: 12px; background: none; border: none;
+           padding: 7px 16px; cursor: pointer; color: var(--gray-500);
+           border-bottom: 2px solid transparent; margin-bottom: -1.5px; transition: color 0.1s; }
+.sys-tab:hover { color: var(--slate); }
+.sys-tab.active { color: var(--slate); border-bottom-color: var(--clay); font-weight: 500; }
+
+/* ── Architecture view ────────────────────────── */
 .sys-wrap { display: flex; gap: 20px; align-items: flex-start; }
-.sys-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.sys-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .sys-diagram { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
 .sys-sidebar { flex: 0 0 260px; display: flex; flex-direction: column; gap: 12px; }
 
-/* Detail panel */
+/* ── Filter bar (architecture) ────────────────── */
+.sys-arch-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* ── Filter chips (shared) ────────────────────── */
+.sys-fl { font-family: var(--mono); font-size: 10px; color: var(--gray-500); }
+.sys-fc { font-family: var(--mono); font-size: 11px; border: 1.5px solid currentColor;
+          background: none; border-radius: 100px; padding: 2px 10px;
+          cursor: pointer; opacity: 0.3; transition: opacity 0.1s; }
+.sys-fc.active { opacity: 1; background: rgba(0,0,0,0.03); }
+
+/* ── Detail panel ─────────────────────────────── */
 .sys-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 18px; }
 .sys-ph { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .sys-plabel { font-family: var(--serif); font-size: 15px; font-weight: 600; flex: 1; }
@@ -486,17 +763,18 @@ _CSS = """
 .sys-er { font-size: 12px; color: var(--gray-700); display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
 .sys-ek { font-family: var(--mono); font-size: 10px; color: var(--gray-500); }
 
-/* Node interaction */
+/* ── Node interaction ─────────────────────────── */
 .sys-nr { transition: filter 0.12s; }
 .sys-node:hover .sys-nr { filter: brightness(0.94); }
 .sys-node.active .sys-nr { stroke-width: 2.5px !important; filter: brightness(0.91); }
+.sys-node.filtered-out { opacity: 0.12; pointer-events: none; }
 
-/* Placeholder */
+/* ── Hint / placeholder ───────────────────────── */
 .sys-hint { color: var(--gray-500); font-size: 12px; text-align: center; padding: 32px 16px;
             font-family: var(--mono); background: var(--white); border: var(--border);
             border-radius: 12px; border-style: dashed; }
 
-/* Legend */
+/* ── Legend ───────────────────────────────────── */
 .sys-legend { background: var(--white); border: var(--border); border-radius: 12px; padding: 14px 18px; }
 .sys-leg-group { margin-bottom: 10px; }
 .sys-leg-group:last-child { margin-bottom: 0; }
@@ -505,11 +783,37 @@ _CSS = """
 .sys-leg-row span:first-child { width: 16px; text-align: center; font-size: 12px; }
 .sys-leg-line { display: inline-block; width: 20px; border-top: 2px solid; height: 0; }
 
-/* Description */
-.sys-desc { font-size: 14px; color: var(--gray-700); margin: 0; line-height: 1.6; }
+/* ── Component list ───────────────────────────── */
+.sys-clist { display: flex; flex-direction: column; gap: 14px; }
+.sys-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sys-tbl-wrap { overflow-x: auto; background: var(--white); border: var(--border); border-radius: 12px; }
+.sys-ctable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sys-ctable th { font-family: var(--mono); font-size: 10px; color: var(--gray-500); text-align: left;
+                 padding: 10px 14px; border-bottom: 1.5px solid var(--gray-300); white-space: nowrap; }
+.sys-ctable td { padding: 9px 14px; border-bottom: 1px solid var(--gray-100); vertical-align: top; }
+.sys-ctable tbody tr:last-child td { border-bottom: none; }
+.sys-cr:hover td { background: var(--gray-100); }
+.sys-mono { font-family: var(--mono); font-size: 12px; color: var(--gray-700); }
+.sys-dc { font-size: 12px; color: var(--gray-500); max-width: 280px; }
+
+/* ── Layer diagram view ───────────────────────── */
+.sys-layer-wrap { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+
+/* ── Description ──────────────────────────────── */
+.sys-desc { font-size: 14px; color: var(--gray-700); margin: 0 0 20px; line-height: 1.6; }
 """
 
 _JS = """
+/* ── Tab switching ─────────────────────────────── */
+function sysTab(el) {
+    document.querySelectorAll('.sys-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.sys-view').forEach(function(v) { v.style.display = 'none'; });
+    el.classList.add('active');
+    var view = document.getElementById('view-' + el.getAttribute('data-view'));
+    if (view) view.style.display = 'block';
+}
+
+/* ── Node click (architecture detail panel) ─────── */
 var _active = null;
 function sysClick(el) {
     var nid = el.getAttribute('data-id');
@@ -532,6 +836,49 @@ function sysClick(el) {
     if (hint) hint.style.display = 'none';
     if (panel) panel.style.display = 'block';
 }
+
+/* ── Architecture kind filter ──────────────────── */
+function sysAKind(btn) {
+    btn.classList.toggle('active');
+    _applyArchFilter();
+}
+function _applyArchFilter() {
+    var active = new Set();
+    document.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) {
+        active.add(b.getAttribute('data-ak'));
+    });
+    var all = document.querySelectorAll('.sys-fc[data-ak]').length === 0;
+    document.querySelectorAll('.sys-node').forEach(function(n) {
+        var k = n.getAttribute('data-kind');
+        var show = all || active.size === 0 || active.has(k);
+        n.classList.toggle('filtered-out', !show);
+    });
+}
+
+/* ── Component list filters ────────────────────── */
+function sysFKind(btn) {
+    btn.classList.toggle('active');
+    _applyListFilter();
+}
+function sysFStatus(btn) {
+    btn.classList.toggle('active');
+    _applyListFilter();
+}
+function _applyListFilter() {
+    var kinds = new Set();
+    document.querySelectorAll('.sys-fc[data-fk].active').forEach(function(b) { kinds.add(b.getAttribute('data-fk')); });
+    var statuses = new Set();
+    document.querySelectorAll('.sys-fc[data-fs].active').forEach(function(b) { statuses.add(b.getAttribute('data-fs')); });
+    var hasKindFilter = document.querySelectorAll('.sys-fc[data-fk]').length > 0;
+    var hasStatusFilter = document.querySelectorAll('.sys-fc[data-fs]').length > 0;
+    document.querySelectorAll('.sys-cr').forEach(function(row) {
+        var k = row.getAttribute('data-rkind');
+        var s = row.getAttribute('data-rstatus');
+        var kOk = !hasKindFilter || kinds.size === 0 || kinds.has(k);
+        var sOk = !hasStatusFilter || statuses.size === 0 || !s || statuses.has(s);
+        row.style.display = (kOk && sOk) ? '' : 'none';
+    });
+}
 """
 
 
@@ -541,23 +888,58 @@ def render_system_spec(data: dict) -> str:
     arch_svg  = render_architecture_svg(spec, positions)
     panels    = render_detail_panels(spec)
     legend    = render_legend(spec)
+    filter_bar = render_filter_bar(spec)
+    comp_list  = render_component_list_html(spec)
 
-    desc_html = ""
-    if spec["description"]:
-        desc_html = f'<p class="sys-desc">{_e(spec["description"])}</p>'
+    has_layers = any(g.get("kind") == "layer" for g in spec["groups"])
+    layer_svg  = render_layer_svg(spec) if has_layers else ""
+
+    desc_html = f'<p class="sys-desc">{_e(spec["description"])}</p>' if spec["description"] else ""
+
+    # Tab bar
+    tabs = '<div class="sys-tabs">'
+    tabs += '<button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button>'
+    if has_layers:
+        tabs += '<button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button>'
+    tabs += '<button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button>'
+    tabs += '</div>'
+
+    # Architecture view
+    arch_view = f"""
+<div id="view-arch" class="sys-view">
+  {filter_bar}
+  <div class="sys-wrap">
+    <div class="sys-main">
+      <div class="sys-diagram">{arch_svg}</div>
+    </div>
+    <div class="sys-sidebar">
+      <div id="sys-hint" class="sys-hint">Click a node<br>to see details</div>
+      {panels}
+      {legend}
+    </div>
+  </div>
+</div>"""
+
+    # Layer view (only if layer groups exist)
+    layer_view = ""
+    if has_layers:
+        layer_view = f"""
+<div id="view-layers" class="sys-view" style="display:none">
+  <div class="sys-layer-wrap">{layer_svg}</div>
+</div>"""
+
+    # Components view
+    comp_view = f"""
+<div id="view-components" class="sys-view" style="display:none">
+  {comp_list}
+</div>"""
 
     body = f"""
 {desc_html}
-<div class="sys-wrap">
-  <div class="sys-main">
-    <div class="sys-diagram">{arch_svg}</div>
-  </div>
-  <div class="sys-sidebar">
-    <div id="sys-hint" class="sys-hint">Click a node<br>to see details</div>
-    {panels}
-    {legend}
-  </div>
-</div>
+{tabs}
+{arch_view}
+{layer_view}
+{comp_view}
 <script>{_JS}</script>
 """
 
