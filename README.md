@@ -1,136 +1,115 @@
 # artifact-ui
 
-An MCP server that lets Claude render HTML artifacts in a browser tab and optionally collect user input back into the conversation. The template library grows automatically over time — when Claude generates raw HTML, a background sub-agent extracts the pattern into a reusable template so future similar UIs are fast.
+An MCP server that lets Claude render interactive system architecture diagrams in a browser tab. Claude describes a system semantically (nodes, edges, groups, sequences); the tool handles all layout, colors, and interactivity automatically.
 
 ## What it does
 
-Claude calls the `render_artifact` tool to open a live browser tab. Two modes:
+Claude calls `render_artifact` with a `system_spec` payload describing a codebase or system. The tool opens a browser tab with five linked views of the same spec:
 
-- **`immediate`** — renders and returns right away. Use for displays: charts, tables, diagrams, markdown.
-- **`interactive`** — blocks until the user submits via `window.artifact.submit(payload)` in the browser, then returns that payload to Claude. Use for decisions and forms.
+| View | Description |
+|---|---|
+| **Architecture** | Box-and-arrow graph. Click any node for a detail panel. Filter by node kind. |
+| **Layers** | Horizontal swim-lanes (shown when groups with `kind: "layer"` exist). |
+| **Sequences** | Swim-lane sequence diagrams with a dropdown selector (shown when sequences exist). |
+| **Matrix** | Adjacency matrix — who calls whom at a glance. |
+| **Components** | Filterable table of all nodes with all metadata. |
 
-This replaces walls of text and `AskUserQuestion` prompts with actual UI.
+Two render modes:
 
-## Templates
+- **`immediate`** — renders and returns right away.
+- **`interactive`** — blocks until the user submits via `window.artifact.submit(payload)` in the browser, then returns that payload to Claude. Use for decisions.
 
-Generating full HTML from scratch is slow — Claude has to produce thousands of tokens of markup, CSS, and JavaScript before anything renders. Templates solve this: Claude passes a small JSON `data` payload (~100–200 tokens) and the server renders the complete HTML. All templates load CSS and JS from CDN rather than inlining them.
+## Spec schema
 
-### Built-in templates
+Claude provides a JSON payload. The LLM describes *what exists*; the renderer decides *how to show it*.
 
-| Template | Mode | Purpose |
-|---|---|---|
-| `options` | interactive | Clickable choice list. Returns `{selected, label}`. |
-| `table` | immediate | Sortable data table. |
-| `markdown` | immediate | Rendered markdown with code highlighting. |
-| `form` | interactive | Labeled inputs with submit button. Returns `{field: value, ...}`. |
-| `chart` | immediate | Bar, line, or pie chart via Chart.js. |
-| `compose` | immediate | Combine multiple templates into one page. |
-
-**`options`**
 ```json
 {
-  "title": "Pick a deployment strategy",
-  "description": "Optional subheading",
-  "options": [{"value": "blue_green", "label": "Blue/Green", "description": "Zero-downtime swap.", "icon": "🔵"}]
-}
-```
-
-**`table`**
-```json
-{"title": "Q3 Pipeline", "columns": ["Deal", "Stage", "Value"], "rows": [["Acme", "Proposal", "$42k"]], "sortable": true}
-```
-
-**`markdown`**
-```json
-{"content": "# Heading\n\nSome **markdown** content.", "theme": "dark"}
-```
-
-**`form`**
-```json
-{
-  "title": "New Project",
-  "fields": [
-    {"name": "name", "label": "Project Name", "type": "text", "required": true},
-    {"name": "lang", "label": "Language", "type": "select", "options": ["Python", "Go"]},
-    {"name": "private", "label": "Private", "type": "checkbox"}
+  "title": "My System",
+  "description": "optional one-liner",
+  "nodes": [
+    {
+      "id": "api",
+      "label": "API Server",
+      "kind": "service",
+      "description": "optional — shown in the detail panel on click",
+      "tech": "Go",
+      "owner": "platform-team",
+      "status": "stable",
+      "tags": ["critical"]
+    }
   ],
-  "submit_label": "Create"
-}
-```
-Field types: `text` · `textarea` · `select` · `checkbox` · `number` · `email` · `password`
-
-**`chart`**
-```json
-{
-  "type": "bar",
-  "title": "Monthly Revenue",
-  "labels": ["Jan", "Feb", "Mar"],
-  "datasets": [{"label": "2026", "data": [42000, 38000, 51000]}],
-  "y_label": "USD"
-}
-```
-Chart types: `bar` · `line` · `pie`
-
-**`compose`**
-```json
-{
-  "title": "Q2 Dashboard",
-  "layout": "stack",
-  "items": [
-    {"template": "stat_cards", "data": {"cards": [{"label": "Revenue", "value": "$2.4M", "delta": "▲ 18%", "delta_positive": true}]}},
-    {"template": "chart", "data": {"type": "line", "labels": ["Jan", "Feb"], "datasets": [{"label": "MRR", "data": [40000, 48000]}]}}
+  "edges": [
+    {
+      "from": "ui",
+      "to": "api",
+      "kind": "calls",
+      "label": "REST",
+      "async": false,
+      "protocol": "HTTP"
+    }
+  ],
+  "groups": [
+    {
+      "id": "backend",
+      "label": "Backend",
+      "kind": "layer",
+      "members": ["api", "db"]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "login",
+      "label": "Login Flow",
+      "steps": [
+        {"from": "client", "to": "api", "label": "POST /login"},
+        {"from": "api", "to": "db", "label": "lookup user"}
+      ]
+    }
   ]
 }
 ```
-Layout: `stack` (vertical) or `grid` (2-column). Works with any mix of built-in and learned templates.
 
-### Learned templates
+**Node kinds:** `service` `module` `class` `db` `queue` `external` `package` `file` `function`  
+**Edge kinds:** `calls` `imports` `depends` `emits` `subscribes` `reads` `writes` `deploys` `owns`  
+**Group kinds:** `layer` `package` `team` `domain` `deployment`
 
-When Claude uses raw HTML, a background sub-agent automatically extracts the pattern into a reusable Python render function and saves it to `learned_templates/`. From that point on, the template is available by name — just like a built-in. The tool description updates dynamically to include new learned templates with their schemas.
-
-Learned templates are stored as plain Python files in `learned_templates/` and committed to git, so the library grows permanently across sessions.
-
-You can also save a template manually via the `learn_template` tool (name, description, schema_example, reasoning, code).
+`async: true` on an edge renders it dashed. Node and edge kinds drive all colors — the LLM never specifies colors directly.
 
 ## Architecture
 
 ```
+CLAUDE.md ──at session start──▶ Claude (LLM)
+                                      │
+                              tool call: get_example / render_artifact
+                                      │
 Claude Code  ──stdio JSON-RPC──▶  server.py
                                       │
-                             call_tool() handler
-                             ├── template_loader.py   built-in + learned renderers
-                             ├── templates.py          5 built-in render functions
-                             ├── compose.py            multi-template layout renderer
+                             ├── template_loader.py   builds tool description Claude sees
+                             ├── system_spec_examples.py   reference specs for get_example
+                             ├── system_spec.py        renderer (layout + all five views)
+                             │     └── design_system.py   CSS tokens, shared HTML utilities
                              └── /tmp/artifact_ui/{id}.html
                                       │
-                             webbrowser.open()         opens browser tab
+                             webbrowser.open()
                                       │
                     ┌─────────────────┴──────────────────┐
                     ▼                                     ▼
-         FastAPI :8765                          (raw HTML path only)
-         GET /artifact/{id} → serves file       asyncio.create_subprocess_exec(
-         POST /artifact/event → event.set()       "claude -p <extraction_prompt>"
-                    │                              --allowedTools Bash,Read,Write
-                    ▼                            )  ← sub-agent writes learned_templates/
-         asyncio.Event unblocks
-         MCP tool call response
+         FastAPI :8765                          asyncio.Event (interactive mode)
+         GET /artifact/{id} → serves file       POST /artifact/event → event.set()
+                                                unblocks MCP tool call response
 ```
 
 The MCP stdio server and FastAPI HTTP server share one asyncio event loop via `asyncio.gather()`. Interactive mode works because the browser's POST directly sets an `asyncio.Event` in the same process — no IPC needed.
 
-The template extraction sub-agent is a fully independent `claude -p` process. It analyzes the HTML, writes a validated Python render function to `learned_templates/{name}.py`, and updates `registry.json`. The main agent gets a clean success response and moves on; the sub-agent runs to completion in the background.
-
 ### File structure
 
 ```
-server.py               MCP + FastAPI server, tool handlers
-templates.py            5 built-in render functions
-compose.py              compose template renderer
-template_loader.py      registry management, dynamic tool description
-template_extractor.py   save_template(), spawn_extractor_agent()
-learned_templates/
-  registry.json         metadata for all learned templates
-  {name}.py             one file per learned template
+server.py                  MCP + FastAPI server, tool handlers
+system_spec.py             renderer — layout, all five views, CSS, JS
+system_spec_examples.py    three reference specs (sys_microservices, sys_event_driven, sys_monolith)
+template_loader.py         builds the tool description Claude sees at session start
+design_system.py           CSS design tokens and shared HTML utilities
 ```
 
 ## Setup
@@ -149,11 +128,6 @@ Add to `~/.claude.json` under `mcpServers`:
 }
 ```
 
-To kill a stale server from a previous session and let Claude Code spawn a fresh one:
+> **Important:** Do not run `server.py` manually as a background process. Claude Code manages the lifecycle — running it separately splits the HTTP server and MCP server into different processes, which breaks interactive mode.
 
-```bash
-./restart.sh
-# then /mcp in Claude Code to reconnect
-```
-
-> **Important:** Do not run `server.py` manually as a background process. Claude Code manages the lifecycle — running it separately splits the HTTP server and MCP server into different processes, which breaks interactive mode (the `asyncio.Event` signaling won't work across processes).
+After reconnecting (`/mcp` in Claude Code), always start a **new conversation** so Claude picks up the latest `CLAUDE.md` and tool descriptions.

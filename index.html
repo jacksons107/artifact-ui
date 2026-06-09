@@ -1,0 +1,1124 @@
+<html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>artifact-ui — How It Works</title>
+  <style>
+:root {
+  --ivory: #FAF9F5;
+  --slate: #141413;
+  --clay: #D97757;
+  --clay-d: #B85C3E;
+  --oat: #E3DACC;
+  --olive: #788C5D;
+  --rust: #B04A3F;
+  --white: #FFFFFF;
+
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+
+  --serif: ui-serif, Georgia, serif;
+  --sans: system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --border: 1.5px solid var(--gray-300);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+
+  --shadow-sm: 0 1px 2px rgba(20,20,19,0.06);
+  --shadow-md: 0 4px 14px rgba(20,20,19,0.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 48px 28px 96px;
+}
+
+.page-wide {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 48px 32px 64px;
+}
+
+/* ── Page header ── */
+.page-header { margin-bottom: 40px; }
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  margin-bottom: 6px;
+}
+.page-header h1 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 36px;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+.page-header .description {
+  color: var(--gray-500);
+  font-size: 14px;
+  margin: 0;
+  max-width: 640px;
+}
+
+/* ── Section ── */
+.section { margin-bottom: 48px; }
+.section-header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.section-header h2 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  margin: 0;
+  white-space: nowrap;
+}
+.section-divider { flex: 1; height: 1px; background: var(--gray-300); }
+
+/* ── Layouts ── */
+.layout-stack { display: flex; flex-direction: column; gap: 16px; }
+.layout-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.layout-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.layout-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.layout-sidebar { display: grid; grid-template-columns: 1fr 300px; gap: 32px; align-items: start; }
+.layout-sidebar .sidebar { position: sticky; top: 24px; }
+
+@media (max-width: 920px) {
+  .layout-grid-2, .layout-grid-3, .layout-grid-4, .layout-sidebar {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 999px;
+}
+.badge-neutral  { background: var(--gray-100); color: var(--gray-700); }
+.badge-accent   { background: rgba(217,119,87,0.14); color: var(--clay); }
+.badge-success  { background: rgba(120,140,93,0.16); color: var(--olive); }
+.badge-warning  { background: rgba(184,156,110,0.20); color: #7A6A4F; }
+.badge-danger   { background: rgba(176,74,63,0.14); color: var(--rust); }
+.badge-outlined { background: transparent; color: var(--gray-700); border: var(--border); }
+
+/* ── Avatar ── */
+.avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--oat);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+.avatar.bordered { border: 1.5px solid var(--gray-300); }
+.avatar.o2 { background: #DCE4D2; }
+.avatar.o3 { background: #ECD9CE; }
+.avatar.o4 { background: var(--gray-100); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 16px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  border: 1.5px solid transparent;
+}
+.btn-primary   { background: var(--clay); color: var(--white); border-color: var(--clay); }
+.btn-primary:hover { background: var(--clay-d); border-color: var(--clay-d); }
+.btn-secondary { background: var(--white); color: var(--slate); border-color: var(--gray-300); }
+.btn-secondary:hover { background: var(--gray-100); }
+.btn-ghost     { background: transparent; color: var(--gray-700); border-color: var(--gray-300); }
+.btn-ghost:hover { background: var(--gray-100); }
+.btn-danger    { background: var(--rust); color: var(--white); border-color: var(--rust); }
+.btn-danger:hover { background: #9A3F3F; border-color: #9A3F3F; }
+
+/* ── Chip (inline tag) ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 999px;
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+.chip.olive { background: rgba(120,140,93,0.16); color: var(--olive); }
+.chip.clay  { background: rgba(217,119,87,0.14); color: var(--clay); }
+.chip.rust  { background: rgba(176,74,63,0.14); color: var(--rust); }
+
+/* ── Card ── */
+.card {
+  border-radius: 12px;
+  padding: 20px;
+  transition: box-shadow 0.15s;
+}
+.card:hover { outline: 2px solid var(--clay); outline-offset: 2px; }
+.card-head   { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.card-titles { min-width: 0; }
+.card-title  { font-family: var(--serif); font-size: 17px; font-weight: 500; margin: 0 0 2px; line-height: 1.3; }
+.card-sub    { font-size: 13px; color: var(--gray-500); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-chips  { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+
+.card.flat     { background: var(--white); }
+.card.outlined { background: var(--white); border: var(--border); }
+.card.elevated { background: var(--white); box-shadow: var(--shadow-md); }
+.card.stripe   { background: var(--white); border: var(--border); position: relative; overflow: hidden; }
+.card.stripe::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--clay); }
+.card.inset    { background: var(--oat); }
+.card.horizontal { background: var(--white); border: var(--border); display: flex; align-items: center; gap: 14px; }
+.card.horizontal .card-head  { margin: 0; flex: 1; min-width: 0; }
+.card.horizontal .card-chips { margin: 0; }
+
+/* ── Stat card ── */
+.stat-card {
+  background: var(--white);
+  border: var(--border);
+  border-radius: 12px;
+  padding: 20px 22px 18px;
+}
+.stat-card.warn { border-left: 4px solid var(--clay); padding-left: 19px; }
+.stat-num   { font-family: var(--serif); font-size: 44px; font-weight: 500; line-height: 1; margin-bottom: 8px; }
+.stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-500); }
+.stat-delta { font-family: var(--mono); font-size: 11px; margin-top: 6px; }
+.stat-delta.up   { color: var(--olive); }
+.stat-delta.flat { color: var(--gray-500); }
+.stat-delta.down { color: var(--rust); }
+
+/* ── Data table ── */
+table.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--white);
+  border: var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+table.data-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gray-500);
+  background: var(--gray-100);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--gray-300);
+}
+table.data-table tbody td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 14px;
+  vertical-align: middle;
+}
+table.data-table tbody tr:last-child td { border-bottom: none; }
+table.data-table tbody tr:hover { background: var(--ivory); }
+
+.pr-link { font-family: var(--mono); font-size: 13px; color: var(--clay); text-decoration: none; border-bottom: 1px dotted transparent; }
+.pr-link:hover { border-bottom-color: var(--clay); }
+.risk { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--gray-500); }
+.risk-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.risk-dot.low  { background: var(--olive); }
+.risk-dot.med  { background: var(--clay); }
+.risk-dot.high { background: var(--rust); }
+
+/* ── Diff block ── */
+.diff {
+  background: var(--slate);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  overflow-x: auto;
+  border-radius: 8px;
+}
+.diff-row {
+  display: grid;
+  grid-template-columns: 48px 18px 1fr;
+  align-items: baseline;
+  padding: 0 14px 0 0;
+  white-space: pre;
+}
+.diff-row .ln   { text-align: right; padding-right: 14px; color: var(--gray-500); user-select: none; }
+.diff-row .mark { text-align: center; color: var(--gray-500); }
+.diff-row .code { color: #E8E6DC; }
+.diff-row.ctx .code { color: #B8B6AC; }
+.diff-row.add { background: rgba(120,140,93,0.15); }
+.diff-row.add .mark { color: var(--olive); }
+.diff-row.del { background: rgba(176,74,63,0.15); }
+.diff-row.del .mark { color: var(--rust); }
+.diff-row.hunk { background: rgba(255,255,255,0.04); }
+.diff-row.hunk .code { color: var(--gray-500); }
+
+/* ── Review comments ── */
+.comment-thread { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 20px; background: var(--gray-100); }
+.bubble {
+  position: relative;
+  background: var(--white);
+  border: 1.5px solid var(--gray-300);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 12px 14px 12px 16px;
+  max-width: 680px;
+}
+.bubble.blocking { border-left-color: var(--clay); }
+.bubble.nit      { border-left-color: var(--gray-300); }
+.bubble.suggest  { border-left-color: var(--olive); }
+.bubble .anchor  { font-family: var(--mono); font-size: 11.5px; color: var(--gray-500); margin-bottom: 4px; }
+.bubble .label   { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 8px; }
+.bubble.blocking .label { color: var(--clay); }
+.bubble.nit .label      { color: var(--gray-500); }
+.bubble.suggest .label  { color: var(--olive); }
+
+/* ── Kanban board ── */
+.kanban-board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 920px) { .kanban-board { grid-template-columns: repeat(2, 1fr); } }
+
+.kanban-col {
+  background: var(--white);
+  border: 1.5px solid var(--gray-300);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+}
+.kanban-col.accent-clay  { border-top: 3px solid var(--clay); }
+.kanban-col.accent-olive { border-top: 3px solid var(--olive); }
+.kanban-col.accent-gray  { border-top: 3px solid var(--gray-500); }
+.kanban-col.accent-light { border-top: 3px solid var(--gray-300); }
+.kanban-col.dragover { outline: 2px dashed var(--clay); outline-offset: -6px; background: #FBF6F2; }
+
+.kanban-col-head {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--white);
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 14px 14px 10px;
+  border-bottom: 1.5px solid var(--gray-100);
+}
+.kanban-col-head h3 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 17px;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.kanban-col-head .count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--gray-500);
+  background: var(--gray-100);
+  border: 1.5px solid var(--gray-300);
+  border-radius: 999px;
+  padding: 1px 8px;
+  min-width: 26px;
+  text-align: center;
+}
+.kanban-col-body { padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 60px; }
+
+/* ── Ticket ── */
+.ticket {
+  background: var(--white);
+  border: 1.5px solid var(--gray-300);
+  border-radius: 8px;
+  padding: 10px 11px 9px;
+  cursor: grab;
+  user-select: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+.ticket:hover  { border-color: var(--gray-500); box-shadow: var(--shadow-sm); }
+.ticket:active { cursor: grabbing; }
+.ticket.dragging { opacity: .4; }
+.ticket.dim      { opacity: .25; }
+
+.ticket-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.tid    { font-family: var(--mono); font-size: 11px; color: var(--gray-500); }
+.ttitle { font-size: 13px; line-height: 1.35; color: var(--slate); margin-bottom: 7px; }
+.ticket-bot { display: flex; align-items: center; gap: 6px; }
+
+.tag { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; border-radius: 999px; padding: 1px 7px 2px; border: 1px solid transparent; cursor: pointer; }
+.tag:hover { filter: brightness(0.96); }
+.tag-bug   { background: #F5E2D8; color: var(--clay-d); border-color: #E8C9BA; }
+.tag-feat  { background: #E8EDE0; color: #5C6F44; border-color: #CFDAC0; }
+.tag-chore, .tag-debt { background: var(--gray-100); color: var(--gray-700); border-color: var(--gray-300); }
+
+.est {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--gray-500);
+  border: 1.5px solid var(--gray-300);
+  border-radius: 4px;
+  width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+.owner {
+  font-family: var(--mono);
+  font-size: 10px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--oat);
+  color: var(--gray-700);
+  display: flex; align-items: center; justify-content: center;
+}
+.owner.o2 { background: #DCE4D2; }
+.owner.o3 { background: #ECD9CE; }
+.owner.o4 { background: var(--gray-100); }
+
+/* ── Toolbar ── */
+.toolbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 28px;
+  padding: 16px 20px;
+  margin-bottom: 28px;
+  background: var(--white);
+  border: var(--border);
+  border-radius: 12px;
+}
+.control { display: flex; align-items: center; gap: 10px; }
+.control-label { font-family: var(--mono); font-size: 12px; color: var(--gray-700); }
+.control-value { font-family: var(--mono); font-size: 12px; color: var(--gray-500); min-width: 36px; }
+
+input[type="range"] { appearance: none; width: 140px; height: 4px; background: var(--gray-300); border-radius: 2px; outline: none; }
+input[type="range"]::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; background: var(--clay); border-radius: 50%; cursor: pointer; }
+input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: var(--clay); border: none; border-radius: 50%; cursor: pointer; }
+
+.radio-group { display: inline-flex; border: var(--border); border-radius: 8px; overflow: hidden; }
+.radio-group label { padding: 6px 12px; font-size: 13px; cursor: pointer; user-select: none; color: var(--gray-700); border-right: 1px solid var(--gray-300); }
+.radio-group label:last-child { border-right: none; }
+.radio-group input { display: none; }
+.radio-group label:has(input:checked) { background: var(--gray-100); }
+
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; user-select: none; }
+.check input { appearance: none; width: 16px; height: 16px; border: 1.5px solid var(--gray-300); border-radius: 4px; margin: 0; cursor: pointer; position: relative; }
+.check input:checked { background: var(--clay); border-color: var(--clay); }
+.check input:checked::after { content: ""; position: absolute; left: 4px; top: 0; width: 4px; height: 9px; border: solid var(--white); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
+/* ── Bullet list ── */
+.bullet-list { list-style: none; margin: 0; padding: 0; }
+.bullet-list li { position: relative; padding: 0 0 12px 24px; font-size: 15px; color: var(--gray-700); }
+.bullet-list li::before { content: ""; position: absolute; left: 6px; top: 8px; width: 7px; height: 7px; border-radius: 2px; background: var(--clay); }
+.bullet-list li strong { color: var(--slate); font-weight: 600; }
+
+/* ── Inset panel ── */
+.inset-panel { background: var(--oat); border-radius: 12px; padding: 20px 22px; }
+.inset-item { display: flex; align-items: baseline; gap: 14px; padding: 8px 0; }
+.inset-item + .inset-item { border-top: 1px solid rgba(20,20,19,0.08); }
+.inset-tag  { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-700); background: var(--ivory); border-radius: 4px; padding: 3px 7px; flex-shrink: 0; }
+.inset-body { font-size: 14px; color: var(--gray-700); }
+.inset-note { color: var(--gray-500); font-size: 12px; }
+
+/* ── Prose / body copy ── */
+.prose p { margin: 0 0 14px; color: var(--gray-700); }
+.prose ul { list-style: none; padding: 0; margin: 0; }
+.prose li { position: relative; padding-left: 22px; margin-bottom: 10px; }
+.prose li::before { content: ""; position: absolute; left: 4px; top: 9px; width: 6px; height: 6px; background: var(--gray-500); border-radius: 2px; }
+
+/* flow_diagram */
+.diagram-wrap { background: var(--white); border: var(--border); border-radius: 12px; padding: 24px; overflow: hidden; }
+.diagram-caption { font-size: 12px; color: var(--gray-500); margin-top: 12px; font-family: var(--mono); }
+
+/* ── Utility ── */
+.divider { border: none; border-top: 1px solid var(--gray-300); margin: 0; }
+.mono    { font-family: var(--mono); }
+.serif   { font-family: var(--serif); }
+.text-muted { color: var(--gray-500); }
+.text-sm { font-size: 13px; }
+.text-xs { font-size: 12px; }
+
+/* ── Organisms ── */
+
+/* chart-panel */
+.chart-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 24px 28px 18px; }
+.chart-panel svg { display: block; width: 100%; height: auto; }
+
+/* file-card (PR review) */
+.file-card { border: var(--border); border-radius: 12px; background: var(--white); margin-bottom: 16px; overflow: hidden; scroll-margin-top: 20px; }
+.file-head { padding: 14px 20px; border-bottom: 1.5px solid var(--gray-100); display: flex; align-items: center; gap: 12px; }
+.file-path { font-family: var(--mono); font-size: 13px; color: var(--slate); flex: 1; }
+.file-delta { font-family: var(--mono); font-size: 12px; color: var(--gray-500); }
+.risk-tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 6px; font-weight: 600; }
+.risk-tag.safe      { background: rgba(120,140,93,0.15); color: var(--olive); }
+.risk-tag.medium    { background: var(--oat); color: #7A6A4F; }
+.risk-tag.attention { background: rgba(217,119,87,0.15); color: var(--clay); }
+
+/* event_timeline */
+.event-timeline { display: flex; flex-direction: column; gap: 0; position: relative; }
+.event-entry { display: grid; grid-template-columns: 72px 24px 1fr; gap: 0 12px; align-items: flex-start; padding: 0 0 20px; }
+.event-time { font-family: var(--mono); font-size: 11px; color: var(--gray-500); padding-top: 3px; text-align: right; }
+.event-dot-wrap { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.event-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.event-entry:not(:last-child) .event-dot-wrap::after { content: ""; display: block; width: 2px; flex: 1; background: var(--gray-300); margin-top: 4px; min-height: 16px; }
+.event-body { font-size: 14px; color: var(--gray-700); padding-top: 2px; }
+
+/* milestone_timeline */
+.milestone-timeline { display: flex; flex-direction: column; gap: 0; }
+.milestone { display: grid; grid-template-columns: 120px 28px 1fr; gap: 0 14px; padding: 0 0 24px; }
+.milestone-date { font-family: var(--mono); font-size: 11px; color: var(--gray-500); text-align: right; padding-top: 3px; }
+.milestone-track { display: flex; flex-direction: column; align-items: center; }
+.milestone-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+.milestone:not(:last-child) .milestone-track::after { content: ""; display: block; width: 2px; flex: 1; background: var(--gray-300); margin-top: 4px; min-height: 20px; }
+.milestone-content h4 { font-family: var(--serif); font-size: 16px; font-weight: 500; margin: 0; }
+
+/* shipped_item_list */
+.shipped-list { display: flex; flex-direction: column; }
+.shipped-item { display: flex; align-items: flex-start; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--gray-100); }
+.shipped-item:last-child { border-bottom: none; }
+.shipped-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+.shipped-body { flex: 1; min-width: 0; }
+.shipped-title { font-family: var(--serif); font-size: 15px; font-weight: 500; margin-bottom: 2px; }
+.shipped-desc { font-size: 13px; color: var(--gray-500); }
+.shipped-ref { font-family: var(--mono); font-size: 12px; color: var(--clay); white-space: nowrap; padding-top: 2px; }
+
+/* callout */
+.callout { border-radius: 12px; padding: 20px 24px; margin-bottom: 0; }
+.callout.callout-dark { background: var(--slate); color: var(--ivory); }
+.callout.callout-tinted { background: var(--oat); }
+.callout-label { font-family: var(--mono); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+.callout.callout-dark .callout-label { color: var(--oat); }
+.callout.callout-tinted .callout-label { color: var(--clay); }
+.callout-content { font-size: 14px; line-height: 1.65; }
+.callout.callout-dark .callout-content { color: rgba(250,249,245,0.85); }
+.callout.callout-tinted .callout-content { color: var(--gray-700); }
+
+/* action_checklist */
+.action-list { display: flex; flex-direction: column; gap: 10px; }
+.action-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--white); border: var(--border); border-radius: 8px; }
+.action-item.done { background: var(--gray-100); }
+.action-check { width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--gray-300); display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.action-body { flex: 1; font-size: 13px; color: var(--gray-700); }
+.action-due { font-family: var(--mono); font-size: 11px; color: var(--gray-500); white-space: nowrap; }
+
+/* decision_card */
+.decision-card { background: var(--white); border: 2px solid var(--clay); border-radius: 12px; padding: 24px; background: rgba(217,119,87,0.05); }
+.decision-question { font-family: var(--serif); font-size: 22px; font-weight: 500; line-height: 1.3; margin-bottom: 8px; }
+
+/* code_block */
+.code-block-wrap { border: var(--border); border-radius: 10px; overflow: hidden; }
+.code-block-head { padding: 9px 14px; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); display: flex; align-items: center; justify-content: space-between; }
+.code-block-body { margin: 0; padding: 16px 18px; background: var(--slate); color: #E8E6DC; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; overflow-x: auto; }
+
+/* drag_list */
+.drag-list { list-style: none; margin: 0; padding: 0; }
+.drag-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 2px 0; border-radius: 8px; cursor: grab; user-select: none; transition: background 120ms, opacity 120ms; }
+.drag-item:hover { background: var(--gray-100); }
+.drag-item.dragging { opacity: 0.35; cursor: grabbing; }
+.drag-grip { display: grid; grid-template-columns: 3px 3px; gap: 3px; width: 10px; height: 16px; }
+.drag-grip i { display: block; width: 3px; height: 3px; border-radius: 50%; background: var(--gray-300); }
+.drag-item:hover .drag-grip i { background: var(--gray-700); }
+.drag-label { flex: 1; font-size: 14px; color: var(--slate); }
+.drag-count { font-family: var(--mono); font-size: 11px; color: var(--gray-500); background: var(--gray-100); border: 1.5px solid var(--gray-300); border-radius: 999px; padding: 1px 8px; }
+
+/* step_list */
+.step-list { display: flex; flex-direction: column; gap: 20px; }
+.step { display: grid; grid-template-columns: 28px 1fr; gap: 14px; align-items: flex-start; }
+.step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--clay); color: var(--white); font-family: var(--mono); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.step-title { font-weight: 500; font-size: 15px; color: var(--slate); padding-top: 4px; }
+
+/* two_col_compare */
+.two-col-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 720px) { .two-col-compare { grid-template-columns: 1fr; } }
+.compare-col-head { font-family: var(--mono); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-500); margin-bottom: 12px; }
+
+/* ── Tabs ─────────────────────────────────────── */
+.sys-tabs { display: flex; gap: 0; border-bottom: 1.5px solid var(--gray-300); margin-bottom: 20px; }
+.sys-tab { font-family: var(--mono); font-size: 12px; background: none; border: none;
+           padding: 7px 16px; cursor: pointer; color: var(--gray-500);
+           border-bottom: 2px solid transparent; margin-bottom: -1.5px; transition: color 0.1s; }
+.sys-tab:hover { color: var(--slate); }
+.sys-tab.active { color: var(--slate); border-bottom-color: var(--clay); font-weight: 500; }
+
+/* ── Architecture view ────────────────────────── */
+.sys-wrap { display: flex; gap: 20px; align-items: flex-start; }
+.sys-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.sys-diagram { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+.sys-sidebar { flex: 0 0 260px; display: flex; flex-direction: column; gap: 12px; }
+
+/* ── Filter bar (architecture) ────────────────── */
+.sys-arch-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* ── Filter chips (shared) ────────────────────── */
+.sys-fl { font-family: var(--mono); font-size: 10px; color: var(--gray-500); }
+.sys-fc { font-family: var(--mono); font-size: 11px; border: 1.5px solid currentColor;
+          background: none; border-radius: 100px; padding: 2px 10px;
+          cursor: pointer; opacity: 0.3; transition: opacity 0.1s; }
+.sys-fc.active { opacity: 1; background: rgba(0,0,0,0.03); }
+
+/* ── Detail panel ─────────────────────────────── */
+.sys-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 18px; }
+.sys-ph { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.sys-plabel { font-family: var(--serif); font-size: 15px; font-weight: 600; flex: 1; }
+.sys-kbadge { font-family: var(--mono); font-size: 10px; border: 1px solid; border-radius: 4px; padding: 2px 6px; }
+.sys-pdesc { font-size: 13px; color: var(--gray-700); margin: 0 0 10px; line-height: 1.5; }
+.sys-meta { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12px; margin: 0 0 10px; }
+.sys-meta dt { color: var(--gray-500); font-family: var(--mono); }
+.sys-meta dd { color: var(--slate); margin: 0; }
+.sys-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.sys-tag { font-family: var(--mono); font-size: 10px; background: var(--gray-100); color: var(--gray-700); border-radius: 4px; padding: 2px 7px; }
+.sys-edges { border-top: 1px solid var(--gray-100); padding-top: 10px; }
+.sys-eg-label { font-family: var(--mono); font-size: 10px; color: var(--gray-500); margin: 6px 0 3px; }
+.sys-er { font-size: 12px; color: var(--gray-700); display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.sys-ek { font-family: var(--mono); font-size: 10px; color: var(--gray-500); }
+
+/* ── Node interaction ─────────────────────────── */
+.sys-nr { transition: filter 0.12s; }
+.sys-node:hover .sys-nr { filter: brightness(0.94); }
+.sys-node.active .sys-nr { stroke-width: 2.5px !important; filter: brightness(0.91); }
+.sys-node.filtered-out { opacity: 0.12; pointer-events: none; }
+
+/* ── Hint / placeholder ───────────────────────── */
+.sys-hint { color: var(--gray-500); font-size: 12px; text-align: center; padding: 32px 16px;
+            font-family: var(--mono); background: var(--white); border: var(--border);
+            border-radius: 12px; border-style: dashed; }
+
+/* ── Legend ───────────────────────────────────── */
+.sys-legend { background: var(--white); border: var(--border); border-radius: 12px; padding: 14px 18px; }
+.sys-leg-group { margin-bottom: 10px; }
+.sys-leg-group:last-child { margin-bottom: 0; }
+.sys-leg-title { font-family: var(--mono); font-size: 10px; color: var(--gray-500); margin-bottom: 5px; }
+.sys-leg-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--gray-700); padding: 2px 0; }
+.sys-leg-row span:first-child { width: 16px; text-align: center; font-size: 12px; }
+.sys-leg-line { display: inline-block; width: 20px; border-top: 2px solid; height: 0; }
+
+/* ── Component list ───────────────────────────── */
+.sys-clist { display: flex; flex-direction: column; gap: 14px; }
+.sys-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sys-tbl-wrap { overflow-x: auto; background: var(--white); border: var(--border); border-radius: 12px; }
+.sys-ctable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sys-ctable th { font-family: var(--mono); font-size: 10px; color: var(--gray-500); text-align: left;
+                 padding: 10px 14px; border-bottom: 1.5px solid var(--gray-300); white-space: nowrap; }
+.sys-ctable td { padding: 9px 14px; border-bottom: 1px solid var(--gray-100); vertical-align: top; }
+.sys-ctable tbody tr:last-child td { border-bottom: none; }
+.sys-cr:hover td { background: var(--gray-100); }
+.sys-mono { font-family: var(--mono); font-size: 12px; color: var(--gray-700); }
+.sys-dc { font-size: 12px; color: var(--gray-500); max-width: 280px; }
+
+/* ── Layer diagram view ───────────────────────── */
+.sys-layer-wrap { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+
+/* ── Sequence diagram view ────────────────────── */
+.sys-seq-wrap { display: flex; flex-direction: column; gap: 14px; }
+.sys-seq-controls { display: flex; align-items: center; gap: 10px; }
+.sys-seq-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
+               padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
+               appearance: none; -webkit-appearance: none; }
+.sys-seq-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+
+/* ── Dependency matrix ────────────────────────── */
+.sys-matrix-wrap { overflow-x: auto; background: var(--white); border: var(--border); border-radius: 12px; }
+.sys-mtx { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.sys-mh0 { min-width: 160px; }
+.sys-mth { padding: 0; vertical-align: bottom; border-left: 1px solid var(--gray-100); }
+.sys-mth-inner { writing-mode: vertical-rl; transform: rotate(180deg); padding: 12px 8px 8px;
+                  font-family: var(--mono); font-size: 11px; display: flex; align-items: center;
+                  gap: 4px; color: var(--gray-700); }
+.sys-mrh { padding: 8px 14px; font-family: var(--mono); font-size: 12px; white-space: nowrap;
+           border-right: 1.5px solid var(--gray-300); color: var(--gray-700); border-bottom: 1px solid var(--gray-100); }
+.sys-mc  { padding: 7px 10px; text-align: center; border-left: 1px solid var(--gray-100);
+           border-bottom: 1px solid var(--gray-100); font-family: var(--mono); font-size: 10px; min-width: 64px; }
+.sys-mc-hit { font-weight: 500; }
+.sys-mtx thead tr { border-bottom: 1.5px solid var(--gray-300); }
+.sys-mtx thead th { border-bottom: 1.5px solid var(--gray-300); }
+
+/* ── Description ──────────────────────────────── */
+.sys-desc { font-size: 14px; color: var(--gray-700); margin: 0 0 20px; line-height: 1.6; }
+</style>
+</head>
+<body style="overscroll-behavior-x: auto;">
+  <div class="page-wide">
+    
+<p class="sys-desc">The artifact-ui MCP tool: from LLM tool call to interactive browser diagram. Click any node for details.</p>
+<div class="sys-tabs"><button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button><button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button><button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button><button class="sys-tab" data-view="matrix" onclick="sysTab(this)">Matrix</button><button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button></div>
+
+<div id="view-arch" class="sys-view" style="display: block;">
+  <div class="sys-arch-filters"><span class="sys-fl">Show</span><button class="sys-fc active" data-ak="db" style="color:#788C5D;border-color:#788C5D" onclick="sysAKind(this)">⬡ db</button><button class="sys-fc active" data-ak="external" style="color:#87867F;border-color:#87867F" onclick="sysAKind(this)">◇ external</button><button class="sys-fc active" data-ak="file" style="color:#D1CFC5;border-color:#D1CFC5" onclick="sysAKind(this)">≡ file</button><button class="sys-fc active" data-ak="module" style="color:#87867F;border-color:#87867F" onclick="sysAKind(this)">□ module</button><button class="sys-fc active" data-ak="service" style="color:#D97757;border-color:#D97757" onclick="sysAKind(this)">◈ service</button></div>
+  <div class="sys-wrap">
+    <div class="sys-main">
+      <div class="sys-diagram"><svg viewBox="0 0 292 1360" style="display:block;width:100%;height:auto;max-height:680px" id="sys-svg">
+<defs>
+<marker id="arr-D1CFC5" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D1CFC5"></path></marker>
+<marker id="arr-788C5D" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#788C5D"></path></marker>
+<marker id="arr-87867F" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#87867F"></path></marker>
+<marker id="arr-D97757" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D97757"></path></marker>
+<marker id="arr-B04A3F" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#B04A3F"></path></marker>
+<marker id="arr-C8C5BC" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"></path></marker>
+</defs>
+<rect x="40.0" y="28.0" width="212.0" height="368.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"></rect>
+<text x="50.0" y="45.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Agent</text>
+<rect x="40.0" y="424.0" width="212.0" height="368.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"></rect>
+<text x="50.0" y="441.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Server</text>
+<rect x="40.0" y="820.0" width="212.0" height="236.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"></rect>
+<text x="50.0" y="837.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Rendering</text>
+<rect x="40.0" y="1084.0" width="212.0" height="236.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"></rect>
+<text x="50.0" y="1101.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Delivery</text>
+<path d="M146.0,116.0 C146.0,148.4 146.0,155.6 146.0,188.0" fill="none" stroke="#D1CFC5" stroke-width="1.5" marker-end="url(#arr-D1CFC5)"></path>
+<rect x="83.0" y="143.0" width="126.0" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="154.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5">session instructions</text>
+<path d="M146.0,248.0 C146.0,280.4 146.0,287.6 146.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
+<rect x="114.9" y="275.0" width="62.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">tool call</text>
+<path d="M146.0,380.0 C146.0,412.4 146.0,419.6 146.0,452.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
+<rect x="100.4" y="407.0" width="91.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="418.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">stdio JSON-RPC</text>
+<path d="M146.0,512.0 C146.0,544.4 146.0,551.6 146.0,584.0" fill="none" stroke="#87867F" stroke-width="1.5" marker-end="url(#arr-87867F)"></path>
+<rect x="91.7" y="539.0" width="108.6" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="550.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">build description</text>
+<path d="M146.0,512.0 C146.0,603.8 146.0,624.2 146.0,716.0" fill="none" stroke="#788C5D" stroke-width="1.5" marker-end="url(#arr-788C5D)"></path>
+<rect x="109.1" y="605.0" width="73.8" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="616.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D">get_example</text>
+<path d="M146.0,512.0 C146.0,663.2 146.0,696.8 146.0,848.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
+<rect x="83.0" y="671.0" width="126.0" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="682.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_system_spec()</text>
+<path d="M146.0,908.0 C146.0,940.4 146.0,947.6 146.0,980.0" fill="none" stroke="#87867F" stroke-width="1.5" marker-end="url(#arr-87867F)"></path>
+<path d="M146.0,512.0 C146.0,782.0 146.0,842.0 146.0,1112.0" fill="none" stroke="#B04A3F" stroke-width="1.5" marker-end="url(#arr-B04A3F)"></path>
+<rect x="114.9" y="803.0" width="62.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="814.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#B04A3F">{id}.html</text>
+<path d="M146.0,512.0 C146.0,841.4 146.0,914.6 146.0,1244.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
+<rect x="91.7" y="869.0" width="108.6" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="880.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">webbrowser.open()</text>
+<path d="M146.0,1304.0 C146.0,920.6 146.0,835.4 146.0,452.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
+<rect x="88.8" y="869.0" width="114.4" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="880.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">GET /artifact/{id}</text>
+<path d="M146.0,512.0 C146.0,782.0 146.0,842.0 146.0,1112.0" fill="none" stroke="#788C5D" stroke-width="1.5" marker-end="url(#arr-788C5D)"></path>
+<rect x="112.0" y="803.0" width="68.0" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="814.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D">serve HTML</text>
+<path d="M146.0,644.0 C146.0,438.8 146.0,393.2 146.0,188.0" fill="none" stroke="#D1CFC5" stroke-width="1.5" marker-end="url(#arr-D1CFC5)"></path>
+<rect x="74.3" y="407.0" width="143.4" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
+<text x="146.0" y="418.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5">tool schema Claude sees</text>
+<g class="sys-node" data-id="claude" data-kind="external" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="188.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="215.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">◇</text>
+<text x="83.0" y="212.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Claude (LLM)</text>
+</g>
+<g class="sys-node" data-id="mcp_client" data-kind="service" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="320.0" width="180" height="60" rx="10" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757" opacity="0.75">◈</text>
+<text x="83.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">MCP Client</text>
+<text x="83.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
+</g>
+<g class="sys-node" data-id="server" data-kind="service" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="452.0" width="180" height="60" rx="10" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="479.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757" opacity="0.75">◈</text>
+<text x="83.0" y="476.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">server.py</text>
+<text x="83.0" y="492.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python + FastAPI</text>
+</g>
+<g class="sys-node" data-id="template_loader" data-kind="module" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="584.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="611.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="83.0" y="608.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">template_loader.py</text>
+<text x="83.0" y="624.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="examples" data-kind="module" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="716.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="743.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="83.0" y="740.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">system_spec_examples.py</text>
+<text x="83.0" y="756.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="renderer" data-kind="module" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="848.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="875.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="83.0" y="872.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">system_spec.py</text>
+<text x="83.0" y="888.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="design_system" data-kind="module" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="980.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="1007.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="83.0" y="1004.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">design_system.py</text>
+<text x="83.0" y="1020.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="file_store" data-kind="db" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="1112.0" width="180" height="60" rx="10" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="1139.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D" opacity="0.75">⬡</text>
+<text x="83.0" y="1136.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">/tmp/artifact_ui</text>
+<text x="83.0" y="1152.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">filesystem</text>
+</g>
+<g class="sys-node" data-id="browser" data-kind="external" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="1244.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="1271.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">◇</text>
+<text x="83.0" y="1268.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Browser</text>
+</g>
+<g class="sys-node active" data-id="claude_md" data-kind="file" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"></rect>
+<text x="67.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">≡</text>
+<text x="83.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">CLAUDE.md</text>
+<text x="83.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Markdown</text>
+</g>
+</svg></div>
+    </div>
+    <div class="sys-sidebar">
+      <div id="sys-hint" class="sys-hint" style="display: none;">Click a node<br>to see details</div>
+      <div class="sys-panel" id="panel-claude" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">◇</span><span class="sys-plabel">Claude (LLM)</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></div><p class="sys-pdesc">The Claude instance (you). Reads CLAUDE.md instructions at session start, calls get_example to learn the spec schema, then calls render_artifact with a system_spec payload describing the target system.</p><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ MCP Client <span class="sys-ek">calls · tool call</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← CLAUDE.md <span class="sys-ek">owns · session instructions</span></div><div class="sys-er">← template_loader.py <span class="sys-ek">owns · tool schema Claude sees</span></div></div></div>
+<div class="sys-panel" id="panel-mcp_client" style="display: none;"><div class="sys-ph"><span style="color:#D97757;font-size:14px">◈</span><span class="sys-plabel">MCP Client</span><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></div><p class="sys-pdesc">The MCP client embedded in Claude Code. Maintains a stdio connection to server.py. Serializes tool calls as JSON-RPC and deserializes responses. Presents available tools to Claude at session start.</p><dl class="sys-meta"><dt>Tech</dt><dd>Claude Code</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ server.py <span class="sys-ek">calls · stdio JSON-RPC</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← Claude (LLM) <span class="sys-ek">calls · tool call</span></div></div></div>
+<div class="sys-panel" id="panel-server" style="display: none;"><div class="sys-ph"><span style="color:#D97757;font-size:14px">◈</span><span class="sys-plabel">server.py</span><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></div><p class="sys-pdesc">The heart of the tool. Runs two concurrent servers: (1) an MCP stdio server that receives tool calls from Claude Code, and (2) a FastAPI HTTP server on port 8765 that serves rendered HTML files to the browser. Handles get_example and render_artifact tools.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python + FastAPI</dd></dl><div class="sys-tags"><span class="sys-tag">critical</span></div><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ template_loader.py <span class="sys-ek">imports · build description</span></div><div class="sys-er">→ system_spec_examples.py <span class="sys-ek">reads · get_example</span></div><div class="sys-er">→ system_spec.py <span class="sys-ek">calls · render_system_spec()</span></div><div class="sys-er">→ /tmp/artifact_ui <span class="sys-ek">writes · {id}.html</span></div><div class="sys-er">→ Browser <span class="sys-ek">calls · webbrowser.open()</span></div><div class="sys-er">→ /tmp/artifact_ui <span class="sys-ek">reads · serve HTML</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← MCP Client <span class="sys-ek">calls · stdio JSON-RPC</span></div><div class="sys-er">← Browser <span class="sys-ek">calls · GET /artifact/{id}</span></div></div></div>
+<div class="sys-panel" id="panel-template_loader" style="display: none;"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">template_loader.py</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">Builds the render_artifact tool description that Claude sees. This is what tells Claude about the spec schema, node/edge/group kinds, and how to invoke the tool. Keeping it accurate and concise is key to good agent behavior.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ Claude (LLM) <span class="sys-ek">owns · tool schema Claude sees</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">imports · build description</span></div></div></div>
+<div class="sys-panel" id="panel-examples" style="display: none;"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">system_spec_examples.py</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">Three reference specs: sys_microservices (e-commerce platform), sys_event_driven (IoT pipeline), sys_monolith (Rails app). Claude calls get_example to read one of these before building a spec, ensuring it understands the correct schema shape.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">reads · get_example</span></div></div></div>
+<div class="sys-panel" id="panel-renderer" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">system_spec.py</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">The renderer. Takes a validated spec dict and produces a complete HTML page with five views: Architecture (SVG box-and-arrow), Layers (swim-lanes), Sequences (swim-lane diagrams), Matrix (adjacency table), Components (filterable table). Layout uses Kahn's longest-path algorithm for topological ordering.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd></dl><div class="sys-tags"><span class="sys-tag">critical</span></div><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ design_system.py <span class="sys-ek">imports</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">calls · render_system_spec()</span></div></div></div>
+<div class="sys-panel" id="panel-design_system" style="display: none;"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">design_system.py</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">CSS design tokens and shared HTML utilities. Ivory/slate/clay/olive/rust palette, serif headings. Imported by system_spec.py for consistent visual style.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← system_spec.py <span class="sys-ek">imports</span></div></div></div>
+<div class="sys-panel" id="panel-file_store" style="display:none"><div class="sys-ph"><span style="color:#788C5D;font-size:14px">⬡</span><span class="sys-plabel">/tmp/artifact_ui</span><span class="sys-kbadge" style="color:#788C5D;border-color:#788C5D">db</span></div><p class="sys-pdesc">Temporary directory where rendered HTML files are written. Each artifact is a single self-contained HTML file named {artifact_id}.html. Also stores server.pid so the running server process can be tracked.</p><dl class="sys-meta"><dt>Tech</dt><dd>filesystem</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">writes · {id}.html</span></div><div class="sys-er">← server.py <span class="sys-ek">reads · serve HTML</span></div></div></div>
+<div class="sys-panel" id="panel-browser" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">◇</span><span class="sys-plabel">Browser</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></div><p class="sys-pdesc">The user's browser. Opened automatically via webbrowser.open() when render_artifact is called. Fetches the artifact HTML from the FastAPI server and renders the interactive diagram. The Save button downloads the current page as a standalone HTML file.</p><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ server.py <span class="sys-ek">calls · GET /artifact/{id}</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">calls · webbrowser.open()</span></div></div></div>
+<div class="sys-panel" id="panel-claude_md" style="display: block;"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">≡</span><span class="sys-plabel">CLAUDE.md</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">file</span></div><p class="sys-pdesc">Two files: ~/.claude/CLAUDE.md (global) and artifact-ui/CLAUDE.md (project). Loaded into Claude's context at session start. Tell Claude to always call get_example first, always use template='system_spec', prefer render_artifact over AskUserQuestion for decisions.</p><dl class="sys-meta"><dt>Tech</dt><dd>Markdown</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ Claude (LLM) <span class="sys-ek">owns · session instructions</span></div></div></div>
+      <div class="sys-legend"><div class="sys-leg-group"><div class="sys-leg-title">Nodes</div><div class="sys-leg-row"><span style="color:#788C5D">⬡</span><span>db</span></div><div class="sys-leg-row"><span style="color:#87867F">◇</span><span>external</span></div><div class="sys-leg-row"><span style="color:#D1CFC5">≡</span><span>file</span></div><div class="sys-leg-row"><span style="color:#87867F">□</span><span>module</span></div><div class="sys-leg-row"><span style="color:#D97757">◈</span><span>service</span></div></div><div class="sys-leg-group"><div class="sys-leg-title">Edges</div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D97757;"></span><span>calls</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#87867F;"></span><span>imports</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D1CFC5;"></span><span>owns</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#788C5D;"></span><span>reads</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#B04A3F;"></span><span>writes</span></div></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="view-layers" class="sys-view" style="display: none;">
+  <div class="sys-layer-wrap"><svg viewBox="0 0 676 390" style="display:block;width:100%;height:auto;max-height:700px" id="sys-layer-svg">
+<defs>
+<marker id="larr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"></path></marker>
+</defs>
+<rect x="0" y="14.0" width="676" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"></rect>
+<line x1="108" y1="14.0" x2="108" y2="94.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"></line>
+<text x="54.0" y="54.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Agent</text>
+<rect x="0" y="108.0" width="676" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"></rect>
+<line x1="108" y1="108.0" x2="108" y2="188.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"></line>
+<text x="54.0" y="148.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Server</text>
+<rect x="0" y="202.0" width="676" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"></rect>
+<line x1="108" y1="202.0" x2="108" y2="282.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"></line>
+<text x="54.0" y="242.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Rendering</text>
+<rect x="0" y="296.0" width="676" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"></rect>
+<line x1="108" y1="296.0" x2="108" y2="376.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"></line>
+<text x="54.0" y="336.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Delivery</text>
+<path d="M212.0,28.0 Q302.0,12.0 392.0,28.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
+<path d="M392.0,28.0 Q482.0,12.0 572.0,28.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
+<path d="M572.0,80.0 C572.0,96.8 212.0,105.2 212.0,122.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
+<rect x="350.2" y="93.0" width="83.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
+<text x="392.0" y="103.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">stdio JSON-RPC</text>
+<path d="M212.0,122.0 Q302.0,106.0 392.0,122.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
+<path d="M212.0,122.0 Q392.0,106.0 572.0,122.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
+<path d="M212.0,174.0 C212.0,190.8 302.0,199.2 302.0,216.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
+<rect x="199.0" y="187.0" width="116.0" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
+<text x="257.0" y="197.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">render_system_spec()</text>
+<path d="M302.0,216.0 Q392.0,200.0 482.0,216.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
+<path d="M212.0,174.0 C212.0,228.4 302.0,255.6 302.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
+<rect x="228.7" y="234.0" width="56.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
+<text x="257.0" y="244.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">{id}.html</text>
+<path d="M212.0,174.0 C212.0,228.4 482.0,255.6 482.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
+<rect x="297.1" y="234.0" width="99.8" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
+<text x="347.0" y="244.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">webbrowser.open()</text>
+<path d="M482.0,362.0 C482.0,266.0 212.0,218.0 212.0,122.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
+<rect x="294.4" y="234.0" width="105.2" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
+<text x="347.0" y="244.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">GET /artifact/{id}</text>
+<path d="M212.0,174.0 C212.0,228.4 302.0,255.6 302.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
+<rect x="226.0" y="234.0" width="62.0" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
+<text x="257.0" y="244.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">serve HTML</text>
+<path d="M392.0,174.0 C392.0,115.6 392.0,86.4 392.0,28.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
+<rect x="325.9" y="93.0" width="132.2" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
+<text x="392.0" y="103.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">tool schema Claude sees</text>
+<rect x="132.0" y="28.0" width="160" height="52" rx="8" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5"></rect>
+<text x="212.0" y="48.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">≡ CLAUDE.md</text>
+<text x="212.0" y="64.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Markdown</text>
+<rect x="312.0" y="28.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="392.0" y="54.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Claude (LLM)</text>
+<rect x="492.0" y="28.0" width="160" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
+<text x="572.0" y="48.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Client</text>
+<text x="572.0" y="64.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
+<rect x="132.0" y="122.0" width="160" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
+<text x="212.0" y="142.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ server.py</text>
+<text x="212.0" y="158.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python + FastAPI</text>
+<rect x="312.0" y="122.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="392.0" y="142.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ template_loader.py</text>
+<text x="392.0" y="158.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<rect x="492.0" y="122.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="572.0" y="142.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec_examples.py</text>
+<text x="572.0" y="158.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<rect x="222.0" y="216.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="302.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec.py</text>
+<text x="302.0" y="252.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<rect x="402.0" y="216.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="482.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ design_system.py</text>
+<text x="482.0" y="252.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<rect x="222.0" y="310.0" width="160" height="52" rx="8" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5"></rect>
+<text x="302.0" y="330.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">⬡ /tmp/artifact_ui</text>
+<text x="302.0" y="346.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">filesystem</text>
+<rect x="402.0" y="310.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="482.0" y="336.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Browser</text>
+</svg></div>
+</div>
+
+<div id="view-sequences" class="sys-view" style="display: none;">
+  <div class="sys-seq-wrap"><div class="sys-seq-controls"><span class="sys-fl">Sequence</span><select class="sys-seq-sel" onchange="sysSeqChange(this)"><option value="get-example">get_example call</option><option value="render-artifact">render_artifact call</option></select></div><div class="sys-seq-diagrams"><div id="seqp-get-example" class="sys-seq-panel" style="display: none;"><svg viewBox="0 0 808 424" style="display:block;width:100%;height:auto;max-height:720px">
+<rect x="40.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="110.0" y="46.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Claude (LLM)</text>
+<line x1="110.0" y1="72" x2="110.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="236.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
+<text x="306.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Client</text>
+<text x="306.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
+<line x1="306.0" y1="72" x2="306.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="432.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
+<text x="502.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ server.py</text>
+<text x="502.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python + FastAPI</text>
+<line x1="502.0" y1="72" x2="502.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="628.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="698.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec_examples.py</text>
+<text x="698.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<line x1="698.0" y1="72" x2="698.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<line x1="110.0" y1="104.0" x2="299.0" y2="104.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="306.0,104.0 299.0,100.0 299.0,108.0" fill="#D97757"></polygon>
+<text x="208.0" y="97.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">get_example('sys_microservices')</text>
+<text x="32.0" y="108.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">1</text>
+<line x1="306.0" y1="168.0" x2="495.0" y2="168.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="502.0,168.0 495.0,164.0 495.0,172.0" fill="#D97757"></polygon>
+<text x="404.0" y="161.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">JSON-RPC call_tool</text>
+<text x="32.0" y="172.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">2</text>
+<line x1="502.0" y1="232.0" x2="691.0" y2="232.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="698.0,232.0 691.0,228.0 691.0,236.0" fill="#D97757"></polygon>
+<text x="600.0" y="225.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">EXAMPLES['sys_microservices']</text>
+<text x="32.0" y="236.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">3</text>
+<line x1="502.0" y1="296.0" x2="313.0" y2="296.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="306.0,296.0 313.0,292.0 313.0,300.0" fill="#D97757"></polygon>
+<text x="404.0" y="289.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">JSON spec (indent=2)</text>
+<text x="32.0" y="300.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">4</text>
+<line x1="306.0" y1="360.0" x2="117.0" y2="360.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="110.0,360.0 117.0,356.0 117.0,364.0" fill="#D97757"></polygon>
+<text x="208.0" y="353.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">spec in context window</text>
+<text x="32.0" y="364.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">5</text>
+</svg></div><div id="seqp-render-artifact" class="sys-seq-panel" style=""><svg viewBox="0 0 1396 808" style="display:block;width:100%;height:auto;max-height:720px">
+<rect x="40.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="110.0" y="46.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Claude (LLM)</text>
+<line x1="110.0" y1="72" x2="110.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="236.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
+<text x="306.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Client</text>
+<text x="306.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
+<line x1="306.0" y1="72" x2="306.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="432.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
+<text x="502.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ server.py</text>
+<text x="502.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python + FastAPI</text>
+<line x1="502.0" y1="72" x2="502.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="628.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="698.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec.py</text>
+<text x="698.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<line x1="698.0" y1="72" x2="698.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="824.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="894.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ design_system.py</text>
+<text x="894.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<line x1="894.0" y1="72" x2="894.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="1020.0" y="20" width="140" height="52" rx="8" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5"></rect>
+<text x="1090.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">⬡ /tmp/artifact_ui</text>
+<text x="1090.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">filesystem</text>
+<line x1="1090.0" y1="72" x2="1090.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<rect x="1216.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
+<text x="1286.0" y="46.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Browser</text>
+<line x1="1286.0" y1="72" x2="1286.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
+<line x1="110.0" y1="104.0" x2="299.0" y2="104.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="306.0,104.0 299.0,100.0 299.0,108.0" fill="#D97757"></polygon>
+<text x="208.0" y="97.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_artifact(template='system_spec', data={...})</text>
+<text x="32.0" y="108.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">1</text>
+<line x1="306.0" y1="168.0" x2="495.0" y2="168.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="502.0,168.0 495.0,164.0 495.0,172.0" fill="#D97757"></polygon>
+<text x="404.0" y="161.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">JSON-RPC call_tool</text>
+<text x="32.0" y="172.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">2</text>
+<line x1="502.0" y1="232.0" x2="691.0" y2="232.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="698.0,232.0 691.0,228.0 691.0,236.0" fill="#D97757"></polygon>
+<text x="600.0" y="225.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_system_spec(data)</text>
+<text x="32.0" y="236.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">3</text>
+<line x1="698.0" y1="296.0" x2="887.0" y2="296.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="894.0,296.0 887.0,292.0 887.0,300.0" fill="#D97757"></polygon>
+<text x="796.0" y="289.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">import CSS tokens</text>
+<text x="32.0" y="300.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">4</text>
+<line x1="698.0" y1="360.0" x2="509.0" y2="360.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="502.0,360.0 509.0,356.0 509.0,364.0" fill="#D97757"></polygon>
+<text x="600.0" y="353.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">full HTML string</text>
+<text x="32.0" y="364.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">5</text>
+<line x1="502.0" y1="424.0" x2="1083.0" y2="424.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="1090.0,424.0 1083.0,420.0 1083.0,428.0" fill="#D97757"></polygon>
+<text x="796.0" y="417.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">write {id}.html</text>
+<text x="32.0" y="428.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">6</text>
+<line x1="502.0" y1="488.0" x2="1279.0" y2="488.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="1286.0,488.0 1279.0,484.0 1279.0,492.0" fill="#D97757"></polygon>
+<text x="894.0" y="481.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">webbrowser.open()</text>
+<text x="32.0" y="492.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">7</text>
+<line x1="1286.0" y1="552.0" x2="509.0" y2="552.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="502.0,552.0 509.0,548.0 509.0,556.0" fill="#D97757"></polygon>
+<text x="894.0" y="545.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">GET /artifact/{id}</text>
+<text x="32.0" y="556.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">8</text>
+<line x1="502.0" y1="616.0" x2="1279.0" y2="616.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="1286.0,616.0 1279.0,612.0 1279.0,620.0" fill="#D97757"></polygon>
+<text x="894.0" y="609.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">HTML response</text>
+<text x="32.0" y="620.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">9</text>
+<line x1="502.0" y1="680.0" x2="313.0" y2="680.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="306.0,680.0 313.0,676.0 313.0,684.0" fill="#D97757"></polygon>
+<text x="404.0" y="673.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">{status: rendered}</text>
+<text x="32.0" y="684.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">10</text>
+<line x1="306.0" y1="744.0" x2="117.0" y2="744.0" stroke="#D97757" stroke-width="1.5"></line>
+<polygon points="110.0,744.0 117.0,740.0 117.0,748.0" fill="#D97757"></polygon>
+<text x="208.0" y="737.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">tool result</text>
+<text x="32.0" y="748.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">11</text>
+</svg></div></div></div>
+</div>
+
+<div id="view-matrix" class="sys-view" style="display: none;">
+  <div class="sys-matrix-wrap"><table class="sys-mtx"><thead><tr><th class="sys-mh0"></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">◇</span><span>Claude (LLM)</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#D97757">◈</span><span>MCP Client</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#D97757">◈</span><span>server.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>template_loader.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>system_spec_examples.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>system_spec.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>design_system.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#788C5D">⬡</span><span>/tmp/artifact_ui</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">◇</span><span>Browser</span></div></th></tr></thead><tbody><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">◇</span>Claude (LLM)</td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="claude → mcp_client">calls</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#D97757;margin-right:4px">◈</span>MCP Client</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="mcp_client → server">calls</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#D97757;margin-right:4px">◈</span>server.py</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#87867F;background:rgba(135,134,127,0.07)" title="server → template_loader">imports</td><td class="sys-mc sys-mc-hit" style="color:#788C5D;background:rgba(120,140,93,0.07)" title="server → examples">reads</td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="server → renderer">calls</td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#B04A3F;background:rgba(176,74,63,0.07)" title="server → file_store">writes · reads</td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="server → browser">calls</td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">□</span>template_loader.py</td><td class="sys-mc sys-mc-hit" style="color:#D1CFC5;background:rgba(209,207,197,0.07)" title="template_loader → claude">owns</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">□</span>system_spec.py</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#87867F;background:rgba(135,134,127,0.07)" title="renderer → design_system">imports</td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">◇</span>Browser</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="browser → server">calls</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#D1CFC5;margin-right:4px">≡</span>CLAUDE.md</td><td class="sys-mc sys-mc-hit" style="color:#D1CFC5;background:rgba(209,207,197,0.07)" title="claude_md → claude">owns</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr></tbody></table></div>
+</div>
+
+<div id="view-components" class="sys-view" style="display: none;">
+  <div class="sys-clist"><div class="sys-filters"><span class="sys-fl">Kind</span><button class="sys-fc active" data-fk="db" style="color:#788C5D;border-color:#788C5D" onclick="sysFKind(this)">⬡ db</button><button class="sys-fc active" data-fk="external" style="color:#87867F;border-color:#87867F" onclick="sysFKind(this)">◇ external</button><button class="sys-fc active" data-fk="file" style="color:#D1CFC5;border-color:#D1CFC5" onclick="sysFKind(this)">≡ file</button><button class="sys-fc active" data-fk="module" style="color:#87867F;border-color:#87867F" onclick="sysFKind(this)">□ module</button><button class="sys-fc active" data-fk="service" style="color:#D97757;border-color:#D97757" onclick="sysFKind(this)">◈ service</button></div><div class="sys-tbl-wrap"><table class="sys-ctable"><thead><tr><th>Name</th><th>Kind</th><th>Tech</th><th>Owner</th><th>Status</th><th>Tags</th><th>Description</th></tr></thead><tbody><tr class="sys-cr" data-rkind="external" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">◇</span><strong>Claude (LLM)</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></td><td class="sys-mono"></td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">The Claude instance (you). Reads CLAUDE.md instructions at session start, calls get_example to learn the spec schema, then calls render_artifact with a system_spec payload describing the target system.</td></tr><tr class="sys-cr" data-rkind="service" data-rstatus=""><td><span style="color:#D97757;margin-right:4px">◈</span><strong>MCP Client</strong></td><td><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></td><td class="sys-mono">Claude Code</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">The MCP client embedded in Claude Code. Maintains a stdio connection to server.py. Serializes tool calls as JSON-RPC and deserializes responses. Presents available tools to Claude at session start.</td></tr><tr class="sys-cr" data-rkind="service" data-rstatus=""><td><span style="color:#D97757;margin-right:4px">◈</span><strong>server.py</strong></td><td><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></td><td class="sys-mono">Python + FastAPI</td><td class="sys-mono"></td><td class="sys-mono"></td><td><span class="sys-tag">critical</span></td><td class="sys-dc">The heart of the tool. Runs two concurrent servers: (1) an MCP stdio server that receives tool calls from Claude Code, and (2) a FastAPI HTTP server on port 8765 that serves rendered HTML files to the browser. Handles get_example and render_artifact tools.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>template_loader.py</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Builds the render_artifact tool description that Claude sees. This is what tells Claude about the spec schema, node/edge/group kinds, and how to invoke the tool. Keeping it accurate and concise is key to good agent behavior.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>system_spec_examples.py</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Three reference specs: sys_microservices (e-commerce platform), sys_event_driven (IoT pipeline), sys_monolith (Rails app). Claude calls get_example to read one of these before building a spec, ensuring it understands the correct schema shape.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>system_spec.py</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td><span class="sys-tag">critical</span></td><td class="sys-dc">The renderer. Takes a validated spec dict and produces a complete HTML page with five views: Architecture (SVG box-and-arrow), Layers (swim-lanes), Sequences (swim-lane diagrams), Matrix (adjacency table), Components (filterable table). Layout uses Kahn's longest-path algorithm for topological ordering.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>design_system.py</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">CSS design tokens and shared HTML utilities. Ivory/slate/clay/olive/rust palette, serif headings. Imported by system_spec.py for consistent visual style.</td></tr><tr class="sys-cr" data-rkind="db" data-rstatus=""><td><span style="color:#788C5D;margin-right:4px">⬡</span><strong>/tmp/artifact_ui</strong></td><td><span class="sys-kbadge" style="color:#788C5D;border-color:#788C5D">db</span></td><td class="sys-mono">filesystem</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Temporary directory where rendered HTML files are written. Each artifact is a single self-contained HTML file named {artifact_id}.html. Also stores server.pid so the running server process can be tracked.</td></tr><tr class="sys-cr" data-rkind="external" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">◇</span><strong>Browser</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></td><td class="sys-mono"></td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">The user's browser. Opened automatically via webbrowser.open() when render_artifact is called. Fetches the artifact HTML from the FastAPI server and renders the interactive diagram. The Save button downloads the current page as a standalone HTML file.</td></tr><tr class="sys-cr" data-rkind="file" data-rstatus=""><td><span style="color:#D1CFC5;margin-right:4px">≡</span><strong>CLAUDE.md</strong></td><td><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">file</span></td><td class="sys-mono">Markdown</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Two files: ~/.claude/CLAUDE.md (global) and artifact-ui/CLAUDE.md (project). Loaded into Claude's context at session start. Tell Claude to always call get_example first, always use template='system_spec', prefer render_artifact over AskUserQuestion for decisions.</td></tr></tbody></table></div></div>
+</div>
+<script>
+/* ── Tab switching ─────────────────────────────── */
+function sysTab(el) {
+    document.querySelectorAll('.sys-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.sys-view').forEach(function(v) { v.style.display = 'none'; });
+    el.classList.add('active');
+    var view = document.getElementById('view-' + el.getAttribute('data-view'));
+    if (view) view.style.display = 'block';
+}
+
+/* ── Node click (architecture detail panel) ─────── */
+var _active = null;
+function sysClick(el) {
+    var nid = el.getAttribute('data-id');
+    var panel = document.getElementById('panel-' + nid);
+    var hint = document.getElementById('sys-hint');
+
+    if (_active === el) {
+        el.classList.remove('active');
+        _active = null;
+        document.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+        if (hint) hint.style.display = 'block';
+        return;
+    }
+
+    if (_active) _active.classList.remove('active');
+    document.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+
+    el.classList.add('active');
+    _active = el;
+    if (hint) hint.style.display = 'none';
+    if (panel) panel.style.display = 'block';
+}
+
+/* ── Architecture kind filter ──────────────────── */
+function sysAKind(btn) {
+    btn.classList.toggle('active');
+    _applyArchFilter();
+}
+function _applyArchFilter() {
+    var active = new Set();
+    document.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) {
+        active.add(b.getAttribute('data-ak'));
+    });
+    var all = document.querySelectorAll('.sys-fc[data-ak]').length === 0;
+    document.querySelectorAll('.sys-node').forEach(function(n) {
+        var k = n.getAttribute('data-kind');
+        var show = all || active.size === 0 || active.has(k);
+        n.classList.toggle('filtered-out', !show);
+    });
+}
+
+/* ── Sequence selector ─────────────────────────── */
+function sysSeqChange(sel) {
+    var val = sel.value;
+    document.querySelectorAll('.sys-seq-panel').forEach(function(p) {
+        p.style.display = (p.id === 'seqp-' + val) ? '' : 'none';
+    });
+}
+
+/* ── Component list filters ────────────────────── */
+function sysFKind(btn) {
+    btn.classList.toggle('active');
+    _applyListFilter();
+}
+function sysFStatus(btn) {
+    btn.classList.toggle('active');
+    _applyListFilter();
+}
+function _applyListFilter() {
+    var kinds = new Set();
+    document.querySelectorAll('.sys-fc[data-fk].active').forEach(function(b) { kinds.add(b.getAttribute('data-fk')); });
+    var statuses = new Set();
+    document.querySelectorAll('.sys-fc[data-fs].active').forEach(function(b) { statuses.add(b.getAttribute('data-fs')); });
+    var hasKindFilter = document.querySelectorAll('.sys-fc[data-fk]').length > 0;
+    var hasStatusFilter = document.querySelectorAll('.sys-fc[data-fs]').length > 0;
+    document.querySelectorAll('.sys-cr').forEach(function(row) {
+        var k = row.getAttribute('data-rkind');
+        var s = row.getAttribute('data-rstatus');
+        var kOk = !hasKindFilter || kinds.size === 0 || kinds.has(k);
+        var sOk = !hasStatusFilter || statuses.size === 0 || !s || statuses.has(s);
+        row.style.display = (kOk && sOk) ? '' : 'none';
+    });
+}
+</script>
+
+  </div>
+<script>
+window.artifact = {
+  submit: function(payload) {
+    fetch('http://localhost:8765/artifact/event', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({artifact_id: 'artifact-ui-explainer', event: payload})
+    });
+  }
+};
+function __artifactSave() {
+  var blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'artifact-ui-explainer.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+</script>
+<style>
+#__artifact_save_btn {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 99999;
+  background: #FAF9F5;
+  color: #87867F;
+  border: 1.5px solid #D1CFC5;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.75rem;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+}
+#__artifact_save_btn:hover {
+  opacity: 1;
+  border-color: #D97757;
+  color: #141413;
+}
+</style>
+<button id="__artifact_save_btn" onclick="__artifactSave()">⬇ Save</button>
+
+<div id="hl-aria-live-message-container" aria-live="polite" class="visually-hidden"></div><div id="hl-aria-live-alert-container" role="alert" aria-live="assertive" class="visually-hidden"></div></body></html>
