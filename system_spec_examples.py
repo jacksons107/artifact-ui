@@ -40,6 +40,34 @@ EXAMPLES = {
             {"id": "edge",        "label": "Edge Layer",     "kind": "layer",  "members": ["gateway"]},
             {"id": "fulfillment", "label": "Fulfillment",    "kind": "domain", "members": ["orders", "inventory", "orderdb", "invdb"]},
             {"id": "data",        "label": "Data Layer",     "kind": "layer",  "members": ["orderdb", "invdb", "paydb", "userdb"]},
+        ],
+        "sequences": [
+            {
+                "id": "place-order",
+                "label": "Place Order (happy path)",
+                "steps": [
+                    {"from": "client",    "to": "gateway",   "label": "POST /orders HTTPS"},
+                    {"from": "gateway",   "to": "orders",    "label": "create order REST"},
+                    {"from": "orders",    "to": "payments",  "label": "charge card gRPC"},
+                    {"from": "payments",  "to": "paydb",     "label": "record payment SQL"},
+                    {"from": "payments",  "to": "orders",    "label": "payment confirmed"},
+                    {"from": "orders",    "to": "orderdb",   "label": "persist order SQL"},
+                    {"from": "orders",    "to": "bus",       "label": "emit OrderPlaced"},
+                    {"from": "inventory", "to": "bus",       "label": "consume OrderPlaced"},
+                    {"from": "notify",    "to": "bus",       "label": "consume → send email"},
+                ]
+            },
+            {
+                "id": "user-login",
+                "label": "User Login",
+                "steps": [
+                    {"from": "client",  "to": "gateway", "label": "POST /auth/login HTTPS"},
+                    {"from": "gateway", "to": "users",   "label": "verify credentials REST"},
+                    {"from": "users",   "to": "userdb",  "label": "lookup user SQL"},
+                    {"from": "users",   "to": "gateway", "label": "JWT + refresh token"},
+                    {"from": "gateway", "to": "client",  "label": "200 OK + tokens"},
+                ]
+            }
         ]
     },
 
@@ -79,6 +107,34 @@ EXAMPLES = {
             {"id": "processing", "label": "Processing",  "kind": "layer", "members": ["transform", "dlq", "enriched"]},
             {"id": "storage",    "label": "Storage",     "kind": "layer", "members": ["loader", "warehouse", "stream", "cache"]},
             {"id": "serving",    "label": "Serving",     "kind": "layer", "members": ["api", "ui"]},
+        ],
+        "sequences": [
+            {
+                "id": "ingest-store",
+                "label": "Ingest & Store",
+                "steps": [
+                    {"from": "device",    "to": "ingest",    "label": "POST /ingest HTTPS"},
+                    {"from": "ingest",    "to": "raw",       "label": "publish to raw topic"},
+                    {"from": "transform", "to": "raw",       "label": "consume event"},
+                    {"from": "transform", "to": "enriched",  "label": "publish enriched"},
+                    {"from": "loader",    "to": "enriched",  "label": "consume batch"},
+                    {"from": "loader",    "to": "warehouse", "label": "batch insert"},
+                    {"from": "stream",    "to": "enriched",  "label": "consume windowed"},
+                    {"from": "stream",    "to": "cache",     "label": "write aggregates"},
+                ]
+            },
+            {
+                "id": "view-dashboard",
+                "label": "View Dashboard",
+                "steps": [
+                    {"from": "ui",  "to": "api",       "label": "GET /metrics/realtime"},
+                    {"from": "api", "to": "cache",     "label": "read TTL aggregates"},
+                    {"from": "api", "to": "ui",        "label": "current metrics"},
+                    {"from": "ui",  "to": "api",       "label": "GET /metrics/historical"},
+                    {"from": "api", "to": "warehouse", "label": "BigQuery SQL"},
+                    {"from": "api", "to": "ui",        "label": "time-series data"},
+                ]
+            }
         ]
     },
 

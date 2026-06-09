@@ -639,6 +639,255 @@ def render_layer_svg(spec: dict) -> str:
     return "\n".join(parts)
 
 
+# ── Sequence diagram ─────────────────────────────────────────────────────────
+
+_SEQ_COL_W    = 140
+_SEQ_COL_GAP  = 56
+_SEQ_HEADER_H = 52
+_SEQ_STEP_H   = 64
+_SEQ_TOP_PAD  = 20
+_SEQ_SIDE_PAD = 40
+
+
+def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
+    steps = seq.get("steps", [])
+    if not steps:
+        return ""
+
+    # Collect participants in order of first appearance
+    seen: dict[str, bool] = {}
+    participants: list[str] = []
+    for step in steps:
+        for fld in ("from", "to"):
+            nid = step.get(fld)
+            if nid and nid not in seen:
+                seen[nid] = True
+                participants.append(nid)
+
+    n     = len(participants)
+    SVG_W = 2 * _SEQ_SIDE_PAD + n * _SEQ_COL_W + max(0, n - 1) * _SEQ_COL_GAP
+    SVG_H = _SEQ_TOP_PAD + _SEQ_HEADER_H + len(steps) * _SEQ_STEP_H + 32
+
+    # Center-x per participant
+    col_cx: dict[str, float] = {}
+    for i, nid in enumerate(participants):
+        col_cx[nid] = _SEQ_SIDE_PAD + i * (_SEQ_COL_W + _SEQ_COL_GAP) + _SEQ_COL_W / 2
+
+    LIFELINE_TOP = _SEQ_TOP_PAD + _SEQ_HEADER_H
+    LIFELINE_BOT = SVG_H - 16
+
+    parts = [
+        f'<svg viewBox="0 0 {SVG_W:.0f} {SVG_H:.0f}" '
+        f'style="display:block;width:100%;height:auto;max-height:720px">'
+    ]
+
+    # Participant boxes and lifelines
+    for nid in participants:
+        node = node_by_id.get(nid, {})
+        cx   = col_cx[nid]
+        x    = cx - _SEQ_COL_W / 2
+        kind = node.get("kind", "")
+        nst  = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+        label = _e(node.get("label", nid))
+        tech  = _e(node.get("tech", ""))
+
+        parts.append(
+            f'<rect x="{x:.1f}" y="{_SEQ_TOP_PAD}" width="{_SEQ_COL_W}" height="{_SEQ_HEADER_H}" rx="8" '
+            f'fill="{nst["fill"]}" stroke="{nst["stroke"]}" stroke-width="1.5"/>'
+        )
+        lbl_y = _SEQ_TOP_PAD + _SEQ_HEADER_H / 2 - (6 if tech else 0)
+        parts.append(
+            f'<text x="{cx:.1f}" y="{lbl_y:.1f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">'
+            f'{nst["icon"]} {label}</text>'
+        )
+        if tech:
+            parts.append(
+                f'<text x="{cx:.1f}" y="{_SEQ_TOP_PAD + _SEQ_HEADER_H / 2 + 10:.1f}" '
+                f'text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">'
+                f'{tech}</text>'
+            )
+        # Lifeline
+        parts.append(
+            f'<line x1="{cx:.1f}" y1="{LIFELINE_TOP}" x2="{cx:.1f}" y2="{LIFELINE_BOT}" '
+            f'stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>'
+        )
+
+    # Steps
+    for i, step in enumerate(steps):
+        src = step.get("from")
+        dst = step.get("to")
+        if not src or not dst or src not in col_cx or dst not in col_cx:
+            continue
+
+        sx    = col_cx[src]
+        ex    = col_cx[dst]
+        y     = LIFELINE_TOP + (i + 0.5) * _SEQ_STEP_H
+        label = step.get("label", "")
+
+        if src == dst:
+            # Self-loop: small arc to the right
+            r  = 20
+            lx = sx + _SEQ_COL_W / 2 - 10
+            parts.append(
+                f'<path d="M{sx:.1f},{y-10:.1f} Q{lx:.1f},{y-10:.1f} {lx:.1f},{y:.1f} '
+                f'Q{lx:.1f},{y+10:.1f} {sx:.1f},{y+10:.1f}" '
+                f'fill="none" stroke="#D97757" stroke-width="1.5"/>'
+            )
+            if label:
+                parts.append(
+                    f'<text x="{lx+6:.1f}" y="{y+3:.1f}" '
+                    f'font-family="ui-monospace,monospace" font-size="10" fill="#D97757">'
+                    f'{_e(label)}</text>'
+                )
+            continue
+
+        going_right = ex > sx
+
+        # Draw line body (stops short to leave room for arrowhead)
+        tip_x   = ex
+        arrow_d = 7
+        body_ex = ex - arrow_d if going_right else ex + arrow_d
+        parts.append(
+            f'<line x1="{sx:.1f}" y1="{y:.1f}" x2="{body_ex:.1f}" y2="{y:.1f}" '
+            f'stroke="#D97757" stroke-width="1.5"/>'
+        )
+
+        # Explicit arrowhead polygon (avoids SVG marker rotation ambiguity)
+        if going_right:
+            pts = f"{tip_x},{y} {tip_x-arrow_d},{y-4} {tip_x-arrow_d},{y+4}"
+        else:
+            pts = f"{tip_x},{y} {tip_x+arrow_d},{y-4} {tip_x+arrow_d},{y+4}"
+        parts.append(f'<polygon points="{pts}" fill="#D97757"/>')
+
+        # Step label above the arrow
+        if label:
+            mx = (sx + ex) / 2
+            parts.append(
+                f'<text x="{mx:.1f}" y="{y - 7:.1f}" text-anchor="middle" '
+                f'font-family="ui-monospace,monospace" font-size="10" fill="#D97757">'
+                f'{_e(label)}</text>'
+            )
+
+        # Step index at left margin
+        parts.append(
+            f'<text x="{_SEQ_SIDE_PAD - 8:.1f}" y="{y + 4:.1f}" text-anchor="end" '
+            f'font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">{i+1}</text>'
+        )
+
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
+def render_sequence_html(spec: dict) -> str:
+    sequences = spec.get("sequences", [])
+    if not sequences:
+        return ""
+
+    node_by_id = {n["id"]: n for n in spec["nodes"]}
+    first_id   = sequences[0]["id"]
+
+    html  = '<div class="sys-seq-wrap">'
+    html += '<div class="sys-seq-controls">'
+    html += '<span class="sys-fl">Sequence</span>'
+    html += '<select class="sys-seq-sel" onchange="sysSeqChange(this)">'
+    for seq in sequences:
+        html += f'<option value="{_e(seq["id"])}">{_e(seq["label"])}</option>'
+    html += '</select>'
+    html += '</div>'
+
+    html += '<div class="sys-seq-diagrams">'
+    for i, seq in enumerate(sequences):
+        display = '' if i == 0 else 'style="display:none"'
+        svg = _render_seq_svg(seq, node_by_id)
+        html += f'<div id="seqp-{_e(seq["id"])}" class="sys-seq-panel" {display}>{svg}</div>'
+    html += '</div>'
+
+    html += '</div>'
+    return html
+
+
+# ── Dependency matrix ─────────────────────────────────────────────────────────
+
+def render_matrix_html(spec: dict) -> str:
+    nodes = spec["nodes"]
+    edges = spec["edges"]
+
+    if not edges:
+        return '<p class="sys-mono" style="color:var(--gray-500);padding:20px 0">No edges to display.</p>'
+
+    node_by_id = {n["id"]: n for n in nodes}
+
+    # Sources and targets, preserving spec node order
+    src_ids: list[str] = []
+    tgt_ids: list[str] = []
+    seen_s: set[str] = set()
+    seen_t: set[str] = set()
+    for node in nodes:
+        nid = node["id"]
+        if any(e["from"] == nid for e in edges) and nid not in seen_s:
+            src_ids.append(nid)
+            seen_s.add(nid)
+        if any(e["to"] == nid for e in edges) and nid not in seen_t:
+            tgt_ids.append(nid)
+            seen_t.add(nid)
+
+    # Edge map (src, tgt) → list of edges
+    edge_map: dict[tuple, list] = defaultdict(list)
+    for e in edges:
+        edge_map[(e["from"], e["to"])].append(e)
+
+    html  = '<div class="sys-matrix-wrap"><table class="sys-mtx">'
+
+    # Header row — rotated column labels
+    html += '<thead><tr><th class="sys-mh0"></th>'
+    for tgt in tgt_ids:
+        node  = node_by_id.get(tgt, {})
+        label = _e(node.get("label", tgt))
+        kind  = node.get("kind", "")
+        nst   = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+        html += (
+            f'<th class="sys-mth">'
+            f'<div class="sys-mth-inner">'
+            f'<span style="color:{nst["stroke"]}">{nst["icon"]}</span>'
+            f'<span>{label}</span>'
+            f'</div></th>'
+        )
+    html += '</tr></thead><tbody>'
+
+    # Data rows
+    for src in src_ids:
+        node  = node_by_id.get(src, {})
+        label = _e(node.get("label", src))
+        kind  = node.get("kind", "")
+        nst   = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+
+        html += (
+            f'<tr><td class="sys-mrh">'
+            f'<span style="color:{nst["stroke"]};margin-right:4px">{nst["icon"]}</span>'
+            f'{label}</td>'
+        )
+        for tgt in tgt_ids:
+            cell_edges = edge_map.get((src, tgt), [])
+            if cell_edges:
+                e0    = cell_edges[0]
+                ekind = e0.get("kind", "")
+                est   = EDGE_KIND_STYLES.get(ekind, _DEFAULT_EDGE_STYLE)
+                color = est["color"]
+                kinds_str = " · ".join(_e(e.get("kind", "→")) for e in cell_edges)
+                bg    = f"background:rgba({','.join(str(int(int(color[i:i+2],16))) for i in (1,3,5))},0.07)"
+                html += (
+                    f'<td class="sys-mc sys-mc-hit" style="color:{color};{bg}" '
+                    f'title="{_e(src)} → {_e(tgt)}">{kinds_str}</td>'
+                )
+            else:
+                html += '<td class="sys-mc"></td>'
+        html += '</tr>'
+
+    html += '</tbody></table></div>'
+    return html
+
+
 # ── Component list ────────────────────────────────────────────────────────────
 
 def render_component_list_html(spec: dict) -> str:
@@ -799,6 +1048,30 @@ _CSS = """
 /* ── Layer diagram view ───────────────────────── */
 .sys-layer-wrap { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
 
+/* ── Sequence diagram view ────────────────────── */
+.sys-seq-wrap { display: flex; flex-direction: column; gap: 14px; }
+.sys-seq-controls { display: flex; align-items: center; gap: 10px; }
+.sys-seq-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
+               padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
+               appearance: none; -webkit-appearance: none; }
+.sys-seq-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+
+/* ── Dependency matrix ────────────────────────── */
+.sys-matrix-wrap { overflow-x: auto; background: var(--white); border: var(--border); border-radius: 12px; }
+.sys-mtx { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.sys-mh0 { min-width: 160px; }
+.sys-mth { padding: 0; vertical-align: bottom; border-left: 1px solid var(--gray-100); }
+.sys-mth-inner { writing-mode: vertical-rl; transform: rotate(180deg); padding: 12px 8px 8px;
+                  font-family: var(--mono); font-size: 11px; display: flex; align-items: center;
+                  gap: 4px; color: var(--gray-700); }
+.sys-mrh { padding: 8px 14px; font-family: var(--mono); font-size: 12px; white-space: nowrap;
+           border-right: 1.5px solid var(--gray-300); color: var(--gray-700); border-bottom: 1px solid var(--gray-100); }
+.sys-mc  { padding: 7px 10px; text-align: center; border-left: 1px solid var(--gray-100);
+           border-bottom: 1px solid var(--gray-100); font-family: var(--mono); font-size: 10px; min-width: 64px; }
+.sys-mc-hit { font-weight: 500; }
+.sys-mtx thead tr { border-bottom: 1.5px solid var(--gray-300); }
+.sys-mtx thead th { border-bottom: 1.5px solid var(--gray-300); }
+
 /* ── Description ──────────────────────────────── */
 .sys-desc { font-size: 14px; color: var(--gray-700); margin: 0 0 20px; line-height: 1.6; }
 """
@@ -855,6 +1128,14 @@ function _applyArchFilter() {
     });
 }
 
+/* ── Sequence selector ─────────────────────────── */
+function sysSeqChange(sel) {
+    var val = sel.value;
+    document.querySelectorAll('.sys-seq-panel').forEach(function(p) {
+        p.style.display = (p.id === 'seqp-' + val) ? '' : 'none';
+    });
+}
+
 /* ── Component list filters ────────────────────── */
 function sysFKind(btn) {
     btn.classList.toggle('active');
@@ -883,28 +1164,33 @@ function _applyListFilter() {
 
 
 def render_system_spec(data: dict) -> str:
-    spec      = parse_spec(data)
-    positions = layout_graph(spec["nodes"], spec["edges"], spec["groups"])
-    arch_svg  = render_architecture_svg(spec, positions)
-    panels    = render_detail_panels(spec)
-    legend    = render_legend(spec)
+    spec       = parse_spec(data)
+    positions  = layout_graph(spec["nodes"], spec["edges"], spec["groups"])
+    arch_svg   = render_architecture_svg(spec, positions)
+    panels     = render_detail_panels(spec)
+    legend     = render_legend(spec)
     filter_bar = render_filter_bar(spec)
     comp_list  = render_component_list_html(spec)
+    matrix     = render_matrix_html(spec)
 
     has_layers = any(g.get("kind") == "layer" for g in spec["groups"])
+    has_seqs   = bool(spec.get("sequences"))
     layer_svg  = render_layer_svg(spec) if has_layers else ""
+    seq_html   = render_sequence_html(spec) if has_seqs else ""
 
     desc_html = f'<p class="sys-desc">{_e(spec["description"])}</p>' if spec["description"] else ""
 
-    # Tab bar
-    tabs = '<div class="sys-tabs">'
+    # Tab bar — only show tabs that have content
+    tabs  = '<div class="sys-tabs">'
     tabs += '<button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button>'
     if has_layers:
         tabs += '<button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button>'
+    if has_seqs:
+        tabs += '<button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button>'
+    tabs += '<button class="sys-tab" data-view="matrix" onclick="sysTab(this)">Matrix</button>'
     tabs += '<button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button>'
     tabs += '</div>'
 
-    # Architecture view
     arch_view = f"""
 <div id="view-arch" class="sys-view">
   {filter_bar}
@@ -920,15 +1206,21 @@ def render_system_spec(data: dict) -> str:
   </div>
 </div>"""
 
-    # Layer view (only if layer groups exist)
-    layer_view = ""
-    if has_layers:
-        layer_view = f"""
+    layer_view = f"""
 <div id="view-layers" class="sys-view" style="display:none">
   <div class="sys-layer-wrap">{layer_svg}</div>
+</div>""" if has_layers else ""
+
+    seq_view = f"""
+<div id="view-sequences" class="sys-view" style="display:none">
+  {seq_html}
+</div>""" if has_seqs else ""
+
+    matrix_view = f"""
+<div id="view-matrix" class="sys-view" style="display:none">
+  {matrix}
 </div>"""
 
-    # Components view
     comp_view = f"""
 <div id="view-components" class="sys-view" style="display:none">
   {comp_list}
@@ -939,6 +1231,8 @@ def render_system_spec(data: dict) -> str:
 {tabs}
 {arch_view}
 {layer_view}
+{seq_view}
+{matrix_view}
 {comp_view}
 <script>{_JS}</script>
 """
