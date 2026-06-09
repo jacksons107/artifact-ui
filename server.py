@@ -18,19 +18,13 @@ from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
-import compose as compose_module
 import system_spec as system_spec_module
 import template_loader
-import compose_examples
 import system_spec_examples
-from template_extractor import save_template, spawn_extractor_agent
 
 BUILTIN_RENDERERS = {
-    "compose":      compose_module.render_compose,
-    "system_spec":  system_spec_module.render_system_spec,
+    "system_spec": system_spec_module.render_system_spec,
 }
-
-template_loader.load_learned_templates()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -125,79 +119,25 @@ async def receive_event(body: ArtifactEvent):
 
 # ── MCP tools ─────────────────────────────────────────────────────────────────
 
-LEARN_TEMPLATE_DESCRIPTION = """\
-Save a reusable template extracted from raw HTML you just generated.
-
-Call this immediately after any render_artifact call that used the raw 'html' field.
-Analyze the HTML you generated, identify the repeating UI pattern, parameterize it, \
-and provide a Python render function so future similar UIs can use template+data instead of raw HTML.
-
-Rules for the 'code' field:
-- Signature: def render_{name}(data: dict) -> str:
-- Returns a complete HTML document (DOCTYPE through </html>)
-- Use the project design system: from design_system import page_wrapper, BASE_CSS
-- Ivory/slate/clay color palette (no Tailwind); see design_system.py for all tokens and component CSS
-- You may also import and call functions from primitives.py for common components
-- Must contain </body> tag
-- Escape all literal JS/CSS braces as {{ and }}
-- Use data.get() with sensible defaults
-- Only stdlib imports (json, html) plus design_system and primitives from this project
-"""
-
-
 @mcp_server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    template_loader.load_learned_templates()
+    example_names = list(system_spec_examples.EXAMPLES.keys())
     return [
-        types.Tool(
-            name="learn_template",
-            description=LEARN_TEMPLATE_DESCRIPTION,
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Short snake_case identifier, e.g. 'metric_cards', 'status_timeline'.",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "One sentence: what this UI pattern is and when to use it.",
-                    },
-                    "schema_example": {
-                        "type": "object",
-                        "description": "Minimal JSON example showing the data structure the function expects.",
-                    },
-                    "code": {
-                        "type": "string",
-                        "description": "The complete Python render function as a string.",
-                    },
-                    "reasoning": {
-                        "type": "string",
-                        "description": "1-2 sentences: why this pattern is worth a reusable template and what makes it general rather than one-off.",
-                    },
-                },
-                "required": ["name", "description", "schema_example", "code", "reasoning"],
-            },
-        ),
         types.Tool(
             name="get_example",
             description=(
-                "Return the full JSON payload for a named example. "
-                "Call this BEFORE constructing any template data — inspect the example to understand "
-                "the correct shape, then adapt it for your task. "
-                "Compose examples: " + ", ".join(compose_examples.EXAMPLES.keys()) + ". "
-                "System spec examples (use with template='system_spec'): " + ", ".join(system_spec_examples.EXAMPLES.keys()) + "."
+                "Return the full JSON payload for a named system_spec example. "
+                "ALWAYS call this before constructing a spec — inspect the example to understand "
+                "the correct shape, then adapt it for your system. "
+                "Available: " + ", ".join(example_names) + "."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": (
-                            "Example name. Compose: " + ", ".join(compose_examples.EXAMPLES.keys()) + ". "
-                            "System spec: " + ", ".join(system_spec_examples.EXAMPLES.keys()) + "."
-                        ),
-                        "enum": list(compose_examples.EXAMPLES.keys()) + list(system_spec_examples.EXAMPLES.keys()),
+                        "description": "Example name: " + ", ".join(example_names) + ".",
+                        "enum": example_names,
                     }
                 },
                 "required": ["name"],
@@ -225,14 +165,10 @@ async def list_tools() -> list[types.Tool]:
                     "template": template_loader.build_template_schema_property(),
                     "data": {
                         "type": "object",
-                        "description": "JSON data for the chosen template. See tool description for schemas.",
-                    },
-                    "html": {
-                        "type": "string",
-                        "description": "Full HTML to render. Only required when 'template' is not used.",
+                        "description": "The system_spec JSON payload. See tool description for schema.",
                     },
                 },
-                "required": ["artifact_id", "title", "mode"],
+                "required": ["artifact_id", "title", "mode", "template", "data"],
             },
         )
     ]
@@ -242,57 +178,32 @@ async def list_tools() -> list[types.Tool]:
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     if name == "get_example":
         example_name = arguments.get("name", "")
-        all_examples = {**compose_examples.EXAMPLES, **system_spec_examples.EXAMPLES}
-        example = all_examples.get(example_name)
+        example = system_spec_examples.EXAMPLES.get(example_name)
         if example is None:
-            result = {"error": f"Unknown example: {example_name!r}", "available": list(all_examples.keys())}
+            result = {"error": f"Unknown example: {example_name!r}", "available": list(system_spec_examples.EXAMPLES.keys())}
         else:
             result = example
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-    if name == "learn_template":
-        ok, reason = save_template(
-            name=arguments["name"],
-            description=arguments["description"],
-            schema_example=arguments.get("schema_example", {}),
-            code=arguments["code"],
-            reasoning=arguments.get("reasoning", ""),
-        )
-        if ok:
-            result = {"status": "saved", "name": arguments["name"]}
-        else:
-            result = {"status": "rejected", "reason": reason}
-        return [types.TextContent(type="text", text=json.dumps(result))]
 
     if name != "render_artifact":
         raise ValueError(f"Unknown tool: {name}")
 
     artifact_id = arguments["artifact_id"]
     mode = arguments["mode"]
-    template = arguments.get("template")
+    template = arguments.get("template", "system_spec")
 
-    if template:
-        all_renderers = {**BUILTIN_RENDERERS, **template_loader.get_all_renderers()}
-        renderer = all_renderers.get(template)
-        if renderer is None:
-            raise ValueError(f"Unknown template: {template!r}. Valid: {list(all_renderers)}")
-        html = renderer(arguments.get("data") or {})
-    else:
-        html = arguments.get("html")
-        if not html:
-            raise ValueError("Either 'template'+'data' or 'html' must be provided.")
-        asyncio.create_task(spawn_extractor_agent(html))
+    renderer = BUILTIN_RENDERERS.get(template)
+    if renderer is None:
+        raise ValueError(f"Unknown template: {template!r}. Valid: {list(BUILTIN_RENDERERS)}")
+    html = renderer(arguments.get("data") or {})
 
-    # Inject runtime and write to temp file
     html = inject_runtime(html, artifact_id)
     path = ARTIFACT_DIR / f"{artifact_id}.html"
     path.write_text(html, encoding="utf-8")
 
-    # Register session (reset if artifact_id is reused)
     session: dict[str, Any] = {"event": asyncio.Event(), "result": None}
     artifact_sessions[artifact_id] = session
 
-    # Open browser (non-blocking)
     webbrowser.open(f"http://localhost:{PORT}/artifact/{artifact_id}")
 
     if mode == "immediate":
