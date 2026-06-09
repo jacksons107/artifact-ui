@@ -19,18 +19,46 @@ NODE_KIND_STYLES = {
 _DEFAULT_NODE_STYLE = {"stroke": "#D1CFC5", "fill": "#FFFFFF", "icon": "○"}
 
 EDGE_KIND_STYLES = {
-    "calls":      {"color": "#D97757", "dashed": False},
-    "imports":    {"color": "#87867F", "dashed": False},
-    "depends":    {"color": "#87867F", "dashed": True},
-    "emits":      {"color": "#788C5D", "dashed": True},
-    "subscribes": {"color": "#788C5D", "dashed": True},
-    "reads":      {"color": "#788C5D", "dashed": False},
-    "writes":     {"color": "#B04A3F", "dashed": False},
-    "deploys":    {"color": "#87867F", "dashed": True},
-    "owns":       {"color": "#D1CFC5", "dashed": False},
+    "calls":        {"color": "#D97757", "dashed": False},
+    "imports":      {"color": "#87867F", "dashed": False},
+    "depends":      {"color": "#87867F", "dashed": True},
+    "emits":        {"color": "#788C5D", "dashed": True},
+    "subscribes":   {"color": "#788C5D", "dashed": True},
+    "reads":        {"color": "#788C5D", "dashed": False},
+    "writes":       {"color": "#B04A3F", "dashed": False},
+    "deploys":      {"color": "#87867F", "dashed": True},
+    "owns":         {"color": "#D1CFC5", "dashed": False},
+    "returns":      {"color": "#87867F", "dashed": False},
+    "throws":       {"color": "#B04A3F", "dashed": True},
+    "overrides":    {"color": "#D1CFC5", "dashed": False},
+    "implements":   {"color": "#D1CFC5", "dashed": True},
+    "instantiates": {"color": "#D97757", "dashed": False},
 }
 
 _DEFAULT_EDGE_STYLE = {"color": "#C8C5BC", "dashed": False}
+
+CHANGE_STATUS_STYLES = {
+    "added":    {"stroke": "#4A7C59", "fill": "rgba(74,124,89,0.10)"},
+    "modified": {"stroke": "#B8860B", "fill": "rgba(184,134,11,0.10)"},
+    "deleted":  {"stroke": "#B04A3F", "fill": "rgba(176,74,63,0.10)"},
+}
+
+_CHANGE_STATUS_COLORS = {"added": "#4A7C59", "modified": "#B8860B", "deleted": "#B04A3F"}
+
+_TECH_LANG_MAP = [
+    ("python", "python"), ("go", "go"), ("typescript", "typescript"),
+    ("javascript", "javascript"), ("ruby", "ruby"), ("java", "java"),
+    ("rust", "rust"), ("c++", "cpp"), ("c#", "csharp"), ("kotlin", "kotlin"),
+    ("swift", "swift"), ("php", "php"), ("bash", "bash"), ("shell", "bash"),
+    ("sql", "sql"),
+]
+
+def _infer_lang(node: dict) -> str:
+    tech = node.get("tech", "").lower()
+    for key, val in _TECH_LANG_MAP:
+        if key in tech:
+            return val
+    return "plaintext"
 
 GROUP_KIND_STYLES = {
     "layer":      {"stroke": "#D1CFC5", "fill": "rgba(209,207,197,0.08)"},
@@ -301,26 +329,35 @@ def render_architecture_svg(spec: dict, positions: dict) -> str:
 
     # Nodes
     for node in nodes:
-        nid   = node["id"]
+        nid    = node["id"]
         if nid not in pos:
             continue
-        p     = pos[nid]
+        p      = pos[nid]
         x, y, w, h = p["x"], p["y"], p["w"], p["h"]
-        kind  = node.get("kind", "")
-        nst   = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
-        icon  = nst["icon"]
+        kind   = node.get("kind", "")
+        status = node.get("status", "")
+        nst    = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+        if status in CHANGE_STATUS_STYLES:
+            cst    = CHANGE_STATUS_STYLES[status]
+            stroke = cst["stroke"]
+            fill   = cst["fill"]
+        else:
+            stroke = nst["stroke"]
+            fill   = nst["fill"]
+        icon = nst["icon"]
+        opacity_attr = ' opacity="0.5"' if status == "deleted" else ""
         parts.append(
-            f'<g class="sys-node" data-id="{_e(nid)}" data-kind="{_e(kind)}" '
-            f'style="cursor:pointer" onclick="sysClick(this)">'
+            f'<g class="sys-node" data-id="{_e(nid)}" data-kind="{_e(kind)}" data-status="{_e(status)}" '
+            f'style="cursor:pointer"{opacity_attr} onclick="sysClick(this)">'
         )
         parts.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{w}" height="{h}" rx="10" '
-            f'fill="{nst["fill"]}" stroke="{nst["stroke"]}" stroke-width="1.5" class="sys-nr"/>'
+            f'fill="{fill}" stroke="{stroke}" stroke-width="1.5" class="sys-nr"/>'
         )
         # Icon
         parts.append(
             f'<text x="{x+11:.1f}" y="{y+h/2-3:.1f}" dominant-baseline="middle" '
-            f'font-family="ui-monospace,monospace" font-size="10" fill="{nst["stroke"]}" opacity="0.75">'
+            f'font-family="ui-monospace,monospace" font-size="10" fill="{stroke}" opacity="0.75">'
             f'{icon}</text>'
         )
         # Label
@@ -379,6 +416,13 @@ def render_detail_panels(spec: dict) -> str:
             val = node.get(field, "")
             if val:
                 meta.append((key, val))
+        file_path  = node.get("file_path", "")
+        line_range = node.get("line_range")
+        if file_path:
+            loc = file_path
+            if line_range and len(line_range) == 2:
+                loc += f":{line_range[0]}–{line_range[1]}"
+            meta.append(("Location", loc))
         if meta:
             html += '<dl class="sys-meta">'
             for k, v in meta:
@@ -413,6 +457,15 @@ def render_detail_panels(spec: dict) -> str:
                     detail = f"{ekind} · {elbl}" if elbl else ekind
                     html += f'<div class="sys-er">← {peer} <span class="sys-ek">{detail}</span></div>'
             html += '</div>'
+
+        signature = node.get("signature", "")
+        if signature:
+            html += f'<div class="sys-sig"><code>{_e(signature)}</code></div>'
+
+        code_snippet = node.get("code_snippet", "")
+        if code_snippet:
+            lang = _infer_lang(node)
+            html += f'<div class="sys-snippet"><pre><code class="language-{lang}">{_e(code_snippet)}</code></pre></div>'
 
         html += '</div>'
         panels.append(html)
@@ -953,18 +1006,110 @@ def render_component_list_html(spec: dict) -> str:
 # ── Architecture filter bar ───────────────────────────────────────────────────
 
 def render_filter_bar(spec: dict) -> str:
-    kinds = sorted({n.get("kind", "") for n in spec["nodes"] if n.get("kind")})
-    if not kinds:
+    nodes  = spec["nodes"]
+    kinds  = sorted({n.get("kind", "") for n in nodes if n.get("kind")})
+    change_statuses = [s for s in ("added", "modified", "deleted") if any(n.get("status") == s for n in nodes)]
+    if not kinds and not change_statuses:
         return ""
     html = '<div class="sys-arch-filters">'
-    html += '<span class="sys-fl">Show</span>'
-    for kind in kinds:
-        nst = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
-        html += (
-            f'<button class="sys-fc active" data-ak="{_e(kind)}" '
-            f'style="color:{nst["stroke"]};border-color:{nst["stroke"]}" '
-            f'onclick="sysAKind(this)">{nst["icon"]} {_e(kind)}</button>'
-        )
+    if kinds:
+        html += '<span class="sys-fl">Show</span>'
+        for kind in kinds:
+            nst = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+            html += (
+                f'<button class="sys-fc active" data-ak="{_e(kind)}" '
+                f'style="color:{nst["stroke"]};border-color:{nst["stroke"]}" '
+                f'onclick="sysAKind(this)">{nst["icon"]} {_e(kind)}</button>'
+            )
+    if change_statuses:
+        if kinds:
+            html += '<span class="sys-fl-sep"></span>'
+        html += '<span class="sys-fl">Changes</span>'
+        for st in change_statuses:
+            color = _CHANGE_STATUS_COLORS[st]
+            html += (
+                f'<button class="sys-fc active" data-as="{_e(st)}" '
+                f'style="color:{color};border-color:{color}" '
+                f'onclick="sysAStatus(this)">{_e(st)}</button>'
+            )
+    html += '</div>'
+    return html
+
+
+# ── Changes tab ──────────────────────────────────────────────────────────────
+
+def render_changes_html(spec: dict) -> str:
+    nodes = spec["nodes"]
+    added    = [n for n in nodes if n.get("status") == "added"]
+    modified = [n for n in nodes if n.get("status") == "modified"]
+    deleted  = [n for n in nodes if n.get("status") == "deleted"]
+    if not (added or modified or deleted):
+        return ""
+
+    def _node_header(node: dict) -> str:
+        kind = node.get("kind", "")
+        nst  = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
+        fp   = node.get("file_path", "")
+        lr   = node.get("line_range")
+        loc  = fp
+        if loc and lr and len(lr) == 2:
+            loc += f":{lr[0]}–{lr[1]}"
+        h  = '<div class="sys-chg-node">'
+        if kind:
+            h += f'<span class="sys-kbadge" style="color:{nst["stroke"]};border-color:{nst["stroke"]}">{_e(kind)}</span>'
+        h += f'<strong class="sys-chg-label">{_e(node.get("label", node["id"]))}</strong>'
+        if loc:
+            h += f'<span class="sys-chg-fp">{_e(loc)}</span>'
+        h += '</div>'
+        return h
+
+    def _pre(code: str, lang: str) -> str:
+        return f'<pre class="sys-chg-pre"><code class="language-{lang}">{_e(code)}</code></pre>'
+
+    html = '<div class="sys-changes">'
+
+    if added:
+        html += '<div class="sys-chg-section">'
+        html += '<div class="sys-chg-header" style="color:#4A7C59;border-left-color:#4A7C59">Added</div>'
+        for node in added:
+            html += _node_header(node)
+            snippet = node.get("code_snippet", "")
+            if snippet:
+                html += _pre(snippet, _infer_lang(node))
+        html += '</div>'
+
+    if modified:
+        html += '<div class="sys-chg-section">'
+        html += '<div class="sys-chg-header" style="color:#B8860B;border-left-color:#B8860B">Modified</div>'
+        for node in modified:
+            html += _node_header(node)
+            prev = node.get("previous_code_snippet", "")
+            curr = node.get("code_snippet", "")
+            lang = _infer_lang(node)
+            if prev and curr:
+                html += '<div class="sys-chg-diff">'
+                html += '<div class="sys-chg-side"><div class="sys-chg-side-label" style="color:#B04A3F">Before</div>'
+                html += _pre(prev, lang)
+                html += '</div>'
+                html += '<div class="sys-chg-side"><div class="sys-chg-side-label" style="color:#4A7C59">After</div>'
+                html += _pre(curr, lang)
+                html += '</div></div>'
+            elif curr:
+                html += _pre(curr, lang)
+            elif prev:
+                html += _pre(prev, lang)
+        html += '</div>'
+
+    if deleted:
+        html += '<div class="sys-chg-section">'
+        html += '<div class="sys-chg-header" style="color:#B04A3F;border-left-color:#B04A3F">Deleted</div>'
+        for node in deleted:
+            html += _node_header(node)
+            snippet = node.get("previous_code_snippet", "")
+            if snippet:
+                html += _pre(snippet, _infer_lang(node))
+        html += '</div>'
+
     html += '</div>'
     return html
 
@@ -1074,6 +1219,29 @@ _CSS = """
 
 /* ── Description ──────────────────────────────── */
 .sys-desc { font-size: 14px; color: var(--gray-700); margin: 0 0 20px; line-height: 1.6; }
+
+/* ── Filter bar separator ─────────────────────── */
+.sys-fl-sep { display: inline-block; width: 1px; height: 16px; background: var(--gray-300); margin: 0 6px; vertical-align: middle; }
+
+/* ── Code snippet in detail panel ─────────────── */
+.sys-sig { margin: 10px 0 6px; padding: 6px 10px; background: var(--gray-100); border-left: 3px solid var(--clay); border-radius: 0 4px 4px 0; }
+.sys-sig code { font-family: var(--mono); font-size: 12px; color: var(--slate); }
+.sys-snippet { margin: 6px 0 0; }
+.sys-snippet pre { margin: 0; padding: 10px 12px; background: var(--ivory); border: var(--border); border-radius: 8px; overflow-x: auto; max-height: 320px; font-size: 0.78rem; line-height: 1.5; }
+.sys-snippet pre code { font-family: var(--mono); }
+
+/* ── Changes tab ──────────────────────────────── */
+.sys-changes { display: flex; flex-direction: column; gap: 24px; }
+.sys-chg-section { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.sys-chg-header { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 4px 0 4px 10px; border-left: 3px solid; letter-spacing: 0.04em; text-transform: uppercase; }
+.sys-chg-node { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sys-chg-label { font-family: var(--serif); font-size: 14px; }
+.sys-chg-fp { font-family: var(--mono); font-size: 11px; color: var(--gray-500); }
+.sys-chg-pre { margin: 4px 0 0; padding: 10px 12px; background: var(--ivory); border: var(--border); border-radius: 8px; overflow-x: auto; max-height: 360px; font-size: 0.78rem; line-height: 1.5; }
+.sys-chg-pre code { font-family: var(--mono); }
+.sys-chg-diff { display: flex; gap: 12px; flex-wrap: wrap; }
+.sys-chg-side { flex: 1 1 340px; display: flex; flex-direction: column; gap: 4px; }
+.sys-chg-side-label { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 """
 
 _JS = """
@@ -1110,21 +1278,28 @@ function sysClick(el) {
     if (panel) panel.style.display = 'block';
 }
 
-/* ── Architecture kind filter ──────────────────── */
+/* ── Architecture kind + status filters ─────────── */
 function sysAKind(btn) {
     btn.classList.toggle('active');
     _applyArchFilter();
 }
+function sysAStatus(btn) {
+    btn.classList.toggle('active');
+    _applyArchFilter();
+}
 function _applyArchFilter() {
-    var active = new Set();
-    document.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) {
-        active.add(b.getAttribute('data-ak'));
-    });
-    var all = document.querySelectorAll('.sys-fc[data-ak]').length === 0;
+    var kinds = new Set();
+    document.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) { kinds.add(b.getAttribute('data-ak')); });
+    var statuses = new Set();
+    document.querySelectorAll('.sys-fc[data-as].active').forEach(function(b) { statuses.add(b.getAttribute('data-as')); });
+    var hasKindFilter   = document.querySelectorAll('.sys-fc[data-ak]').length > 0;
+    var hasStatusFilter = document.querySelectorAll('.sys-fc[data-as]').length > 0;
     document.querySelectorAll('.sys-node').forEach(function(n) {
         var k = n.getAttribute('data-kind');
-        var show = all || active.size === 0 || active.has(k);
-        n.classList.toggle('filtered-out', !show);
+        var s = n.getAttribute('data-status') || '';
+        var kOk = !hasKindFilter   || kinds.size === 0    || kinds.has(k);
+        var sOk = !hasStatusFilter || statuses.size === 0 || !s || statuses.has(s);
+        n.classList.toggle('filtered-out', !(kOk && sOk));
     });
 }
 
@@ -1173,12 +1348,25 @@ def render_system_spec(data: dict) -> str:
     comp_list  = render_component_list_html(spec)
     matrix     = render_matrix_html(spec)
 
-    has_layers = any(g.get("kind") == "layer" for g in spec["groups"])
-    has_seqs   = bool(spec.get("sequences"))
-    layer_svg  = render_layer_svg(spec) if has_layers else ""
-    seq_html   = render_sequence_html(spec) if has_seqs else ""
+    has_layers  = any(g.get("kind") == "layer" for g in spec["groups"])
+    has_seqs    = bool(spec.get("sequences"))
+    has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in spec["nodes"])
+    has_snippets = any(n.get("code_snippet") for n in spec["nodes"])
+
+    layer_svg   = render_layer_svg(spec) if has_layers else ""
+    seq_html    = render_sequence_html(spec) if has_seqs else ""
+    changes_html = render_changes_html(spec) if has_changes else ""
 
     desc_html = f'<p class="sys-desc">{_e(spec["description"])}</p>' if spec["description"] else ""
+
+    # Highlight.js (only when snippets exist)
+    hljs_head = ""
+    if has_snippets or has_changes:
+        hljs_head = (
+            '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">\n'
+            '  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>\n'
+            '  <script>document.addEventListener("DOMContentLoaded",function(){hljs.highlightAll();});</script>'
+        )
 
     # Tab bar — only show tabs that have content
     tabs  = '<div class="sys-tabs">'
@@ -1187,6 +1375,8 @@ def render_system_spec(data: dict) -> str:
         tabs += '<button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button>'
     if has_seqs:
         tabs += '<button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button>'
+    if has_changes:
+        tabs += '<button class="sys-tab" data-view="changes" onclick="sysTab(this)">Changes</button>'
     tabs += '<button class="sys-tab" data-view="matrix" onclick="sysTab(this)">Matrix</button>'
     tabs += '<button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button>'
     tabs += '</div>'
@@ -1216,6 +1406,11 @@ def render_system_spec(data: dict) -> str:
   {seq_html}
 </div>""" if has_seqs else ""
 
+    changes_view = f"""
+<div id="view-changes" class="sys-view" style="display:none">
+  {changes_html}
+</div>""" if has_changes else ""
+
     matrix_view = f"""
 <div id="view-matrix" class="sys-view" style="display:none">
   {matrix}
@@ -1232,9 +1427,10 @@ def render_system_spec(data: dict) -> str:
 {arch_view}
 {layer_view}
 {seq_view}
+{changes_view}
 {matrix_view}
 {comp_view}
 <script>{_JS}</script>
 """
 
-    return page_wrapper(spec["title"], body, extra_css=_CSS, wide=True)
+    return page_wrapper(spec["title"], body, extra_css=_CSS, wide=True, extra_head=hljs_head)

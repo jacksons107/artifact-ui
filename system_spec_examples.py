@@ -1,5 +1,235 @@
 EXAMPLES = {
 
+    "code_impl_plan": {
+        "title": "Auth — JWT Refresh Token Rotation",
+        "description": "Implementation plan for adding refresh token rotation to the auth module. Green nodes are new; amber nodes are modified. Click any node to see its signature and code.",
+        "nodes": [
+            {
+                "id": "client",
+                "label": "API Client",
+                "kind": "external",
+                "description": "Caller of the auth endpoints — a web or mobile client."
+            },
+            {
+                "id": "auth_router",
+                "label": "auth_router.py",
+                "kind": "file",
+                "description": "FastAPI router for /auth/* endpoints. Registers login and the new token refresh route.",
+                "file_path": "src/auth/auth_router.py",
+                "status": "modified",
+                "tech": "Python",
+                "signature": "router = APIRouter(prefix='/auth')",
+                "code_snippet": "router = APIRouter(prefix='/auth')\n\n@router.post('/login')\nasync def login(creds: LoginRequest, db: Session = Depends(get_db)):\n    user = authenticate_user(db, creds.username, creds.password)\n    if not user:\n        raise HTTPException(status_code=401, detail='Bad credentials')\n    return issue_token_pair(user)\n\n@router.post('/refresh')          # NEW endpoint\nasync def refresh(body: RefreshRequest, db: Session = Depends(get_db)):\n    return rotate_refresh_token(db, body.refresh_token)",
+                "previous_code_snippet": "router = APIRouter(prefix='/auth')\n\n@router.post('/login')\nasync def login(creds: LoginRequest, db: Session = Depends(get_db)):\n    user = authenticate_user(db, creds.username, creds.password)\n    if not user:\n        raise HTTPException(status_code=401, detail='Bad credentials')\n    access_token = create_access_token(user.id)\n    return {'access_token': access_token}"
+            },
+            {
+                "id": "issue_token_pair",
+                "label": "issue_token_pair()",
+                "kind": "function",
+                "description": "Creates both an access token and a refresh token, persists the refresh token to the DB, and returns both to the caller.",
+                "file_path": "src/auth/tokens.py",
+                "status": "added",
+                "tech": "Python",
+                "signature": "def issue_token_pair(user: User) -> TokenPair",
+                "code_snippet": "def issue_token_pair(user: User) -> TokenPair:\n    access  = create_access_token(user.id)\n    refresh = secrets.token_urlsafe(48)\n    db.add(RefreshToken(\n        user_id=user.id,\n        token=hash_token(refresh),\n        expires_at=utcnow() + REFRESH_TTL,\n    ))\n    db.commit()\n    return TokenPair(access_token=access, refresh_token=refresh)"
+            },
+            {
+                "id": "rotate_refresh_token",
+                "label": "rotate_refresh_token()",
+                "kind": "function",
+                "description": "Validates the incoming refresh token, deletes it (single-use), issues a new token pair. Raises 401 if the token is unknown or expired.",
+                "file_path": "src/auth/tokens.py",
+                "status": "added",
+                "tech": "Python",
+                "signature": "def rotate_refresh_token(db: Session, raw_token: str) -> TokenPair",
+                "code_snippet": "def rotate_refresh_token(db: Session, raw_token: str) -> TokenPair:\n    record = db.query(RefreshToken).filter_by(\n        token=hash_token(raw_token)\n    ).first()\n    if not record or record.expires_at < utcnow():\n        raise HTTPException(status_code=401, detail='Invalid refresh token')\n    user = db.get(User, record.user_id)\n    db.delete(record)   # single-use: revoke immediately\n    db.commit()\n    return issue_token_pair(user)"
+            },
+            {
+                "id": "create_access_token",
+                "label": "create_access_token()",
+                "kind": "function",
+                "description": "Encodes a short-lived JWT. Unchanged — called by the new issue_token_pair helper.",
+                "file_path": "src/auth/tokens.py",
+                "status": "stable",
+                "tech": "Python",
+                "signature": "def create_access_token(user_id: int) -> str"
+            },
+            {
+                "id": "hash_token",
+                "label": "hash_token()",
+                "kind": "function",
+                "description": "SHA-256 hashes a raw token string before DB storage so plaintext tokens are never persisted.",
+                "file_path": "src/auth/tokens.py",
+                "status": "added",
+                "tech": "Python",
+                "signature": "def hash_token(raw: str) -> str",
+                "code_snippet": "def hash_token(raw: str) -> str:\n    return hashlib.sha256(raw.encode()).hexdigest()"
+            },
+            {
+                "id": "refresh_token_model",
+                "label": "RefreshToken",
+                "kind": "class",
+                "description": "SQLAlchemy model for the refresh_tokens table. Each row is a single-use token tied to a user.",
+                "file_path": "src/auth/models.py",
+                "status": "added",
+                "tech": "Python",
+                "signature": "class RefreshToken(Base)",
+                "code_snippet": "class RefreshToken(Base):\n    __tablename__ = 'refresh_tokens'\n    id         = Column(Integer, primary_key=True)\n    user_id    = Column(Integer, ForeignKey('users.id'), nullable=False)\n    token      = Column(String(64), unique=True, nullable=False)  # SHA-256 hex\n    expires_at = Column(DateTime, nullable=False)\n    created_at = Column(DateTime, default=utcnow)"
+            },
+            {
+                "id": "db",
+                "label": "refresh_tokens table",
+                "kind": "db",
+                "tech": "PostgreSQL",
+                "description": "Stores hashed refresh tokens. Old tokens are deleted on use (rotation) or by a nightly cleanup job."
+            }
+        ],
+        "edges": [
+            {"from": "client",              "to": "auth_router",         "kind": "calls",   "label": "POST /auth/login"},
+            {"from": "client",              "to": "auth_router",         "kind": "calls",   "label": "POST /auth/refresh"},
+            {"from": "auth_router",         "to": "issue_token_pair",    "kind": "calls",   "label": "on login"},
+            {"from": "auth_router",         "to": "rotate_refresh_token","kind": "calls",   "label": "on refresh"},
+            {"from": "issue_token_pair",    "to": "create_access_token", "kind": "calls"},
+            {"from": "issue_token_pair",    "to": "hash_token",          "kind": "calls"},
+            {"from": "issue_token_pair",    "to": "db",                  "kind": "writes",  "label": "INSERT token"},
+            {"from": "rotate_refresh_token","to": "hash_token",          "kind": "calls"},
+            {"from": "rotate_refresh_token","to": "db",                  "kind": "reads",   "label": "lookup token"},
+            {"from": "rotate_refresh_token","to": "db",                  "kind": "writes",  "label": "DELETE token"},
+            {"from": "rotate_refresh_token","to": "issue_token_pair",    "kind": "calls",   "label": "re-issue"},
+            {"from": "refresh_token_model", "to": "db",                  "kind": "owns"},
+        ],
+        "groups": [
+            {"id": "router_file", "label": "auth_router.py", "kind": "package", "members": ["auth_router"]},
+            {"id": "tokens_file", "label": "tokens.py",      "kind": "package", "members": ["issue_token_pair", "rotate_refresh_token", "create_access_token", "hash_token"]},
+            {"id": "models_file", "label": "models.py",      "kind": "package", "members": ["refresh_token_model"]},
+        ],
+        "sequences": [
+            {
+                "id": "before",
+                "label": "Before — login returns access token only",
+                "steps": [
+                    {"from": "client",       "to": "auth_router",      "label": "POST /auth/login"},
+                    {"from": "auth_router",  "to": "create_access_token","label": "create JWT"},
+                    {"from": "auth_router",  "to": "client",           "label": "{ access_token }"},
+                ]
+            },
+            {
+                "id": "after",
+                "label": "After — login + refresh rotation",
+                "steps": [
+                    {"from": "client",              "to": "auth_router",          "label": "POST /auth/login"},
+                    {"from": "auth_router",         "to": "issue_token_pair",     "label": "issue pair"},
+                    {"from": "issue_token_pair",    "to": "create_access_token",  "label": "JWT"},
+                    {"from": "issue_token_pair",    "to": "hash_token",           "label": "hash refresh"},
+                    {"from": "issue_token_pair",    "to": "db",                   "label": "INSERT refresh_token"},
+                    {"from": "auth_router",         "to": "client",               "label": "{ access_token, refresh_token }"},
+                    {"from": "client",              "to": "auth_router",          "label": "POST /auth/refresh"},
+                    {"from": "auth_router",         "to": "rotate_refresh_token", "label": "rotate"},
+                    {"from": "rotate_refresh_token","to": "db",                   "label": "DELETE old token"},
+                    {"from": "rotate_refresh_token","to": "issue_token_pair",     "label": "re-issue"},
+                    {"from": "auth_router",         "to": "client",               "label": "new { access_token, refresh_token }"},
+                ]
+            }
+        ]
+    },
+
+    "code_bug_fix": {
+        "title": "Bug Fix — Cache Invalidation Race Condition",
+        "description": "A race condition in the product cache allowed stale data to be served after an update. The fix adds a write-through invalidation step inside the DB transaction.",
+        "nodes": [
+            {
+                "id": "update_product",
+                "label": "update_product()",
+                "kind": "function",
+                "description": "Updates a product record. Previously invalidated the cache AFTER committing, creating a window where another request could repopulate the cache with stale data. Fixed by invalidating inside the transaction.",
+                "file_path": "src/products/service.py",
+                "line_range": [42, 61],
+                "status": "modified",
+                "tech": "Python",
+                "signature": "def update_product(db: Session, product_id: int, data: ProductUpdate) -> Product",
+                "previous_code_snippet": "def update_product(db: Session, product_id: int, data: ProductUpdate) -> Product:\n    product = db.get(Product, product_id)\n    if not product:\n        raise NotFoundError(product_id)\n    for field, value in data.dict(exclude_unset=True).items():\n        setattr(product, field, value)\n    db.commit()\n    db.refresh(product)\n    cache.delete(f'product:{product_id}')  # BUG: too late — window exists here\n    return product",
+                "code_snippet": "def update_product(db: Session, product_id: int, data: ProductUpdate) -> Product:\n    product = db.get(Product, product_id)\n    if not product:\n        raise NotFoundError(product_id)\n    for field, value in data.dict(exclude_unset=True).items():\n        setattr(product, field, value)\n    cache.delete(f'product:{product_id}')  # FIX: invalidate before commit\n    db.commit()\n    db.refresh(product)\n    return product"
+            },
+            {
+                "id": "get_product",
+                "label": "get_product()",
+                "kind": "function",
+                "description": "Cache-aside read. Checks cache first; on miss, loads from DB and populates cache. Unchanged.",
+                "file_path": "src/products/service.py",
+                "line_range": [22, 38],
+                "status": "stable",
+                "tech": "Python",
+                "signature": "def get_product(db: Session, product_id: int) -> Product"
+            },
+            {
+                "id": "cache_delete",
+                "label": "cache.delete()",
+                "kind": "function",
+                "description": "Redis DEL call. Fast synchronous operation.",
+                "file_path": "src/cache.py",
+                "status": "stable",
+                "tech": "Python"
+            },
+            {
+                "id": "db_session",
+                "label": "DB Session",
+                "kind": "db",
+                "tech": "PostgreSQL",
+                "description": "SQLAlchemy session. db.commit() flushes and ends the transaction."
+            },
+            {
+                "id": "cache",
+                "label": "Cache",
+                "kind": "db",
+                "tech": "Redis",
+                "description": "Product cache. Keys are 'product:{id}', TTL 5 minutes."
+            },
+            {
+                "id": "product_router",
+                "label": "product_router.py",
+                "kind": "file",
+                "description": "FastAPI router — calls update_product on PATCH /products/{id}. Unchanged.",
+                "file_path": "src/products/product_router.py",
+                "status": "stable",
+                "tech": "Python"
+            }
+        ],
+        "edges": [
+            {"from": "product_router", "to": "update_product", "kind": "calls",  "label": "PATCH /products/{id}"},
+            {"from": "product_router", "to": "get_product",    "kind": "calls",  "label": "GET /products/{id}"},
+            {"from": "update_product", "to": "db_session",     "kind": "writes", "label": "commit"},
+            {"from": "update_product", "to": "cache_delete",   "kind": "calls",  "label": "invalidate"},
+            {"from": "cache_delete",   "to": "cache",          "kind": "writes", "label": "DEL key"},
+            {"from": "get_product",    "to": "cache",          "kind": "reads",  "label": "GET key"},
+            {"from": "get_product",    "to": "db_session",     "kind": "reads",  "label": "on miss"},
+        ],
+        "sequences": [
+            {
+                "id": "race",
+                "label": "Bug — race window after commit",
+                "steps": [
+                    {"from": "product_router", "to": "update_product", "label": "PATCH product"},
+                    {"from": "update_product", "to": "db_session",     "label": "db.commit()  ← committed"},
+                    {"from": "product_router", "to": "get_product",    "label": "concurrent GET (cache miss)"},
+                    {"from": "get_product",    "to": "db_session",     "label": "load from DB → stale repopulates cache"},
+                    {"from": "update_product", "to": "cache_delete",   "label": "cache.delete()  ← too late"},
+                ]
+            },
+            {
+                "id": "fixed",
+                "label": "Fix — invalidate inside transaction",
+                "steps": [
+                    {"from": "product_router", "to": "update_product", "label": "PATCH product"},
+                    {"from": "update_product", "to": "cache_delete",   "label": "cache.delete()  ← before commit"},
+                    {"from": "cache_delete",   "to": "cache",          "label": "DEL product:id"},
+                    {"from": "update_product", "to": "db_session",     "label": "db.commit()"},
+                    {"from": "product_router", "to": "get_product",    "label": "concurrent GET"},
+                    {"from": "get_product",    "to": "cache",          "label": "miss → loads fresh from DB"},
+                ]
+            }
+        ]
+    },
+
     "sys_microservices": {
         "title": "E-Commerce Platform — Service Architecture",
         "description": "Microservices architecture for a mid-size e-commerce platform. Each service owns its database. The API Gateway is the only public-facing entry point.",

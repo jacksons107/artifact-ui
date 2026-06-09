@@ -1,14 +1,21 @@
 def build_tool_description() -> str:
     return (
-        "Render an interactive, multi-view system architecture diagram in a browser tab.\n\n"
+        "Render an interactive, multi-view system/code diagram in a browser tab.\n\n"
 
-        "Use this tool when explaining a codebase, service architecture, or system design.\n"
-        "The LLM describes WHAT exists (nodes, edges, groups, sequences); the tool handles\n"
-        "all layout, colors, interactivity, and view switching automatically.\n\n"
+        "── USE CASES ──────────────────────────────────────────────────────────────────\n"
+        "System / service architecture   Use service, db, queue, external, module nodes.\n"
+        "                                Add groups with kind='layer' for swim-lanes.\n"
+        "                                → Examples: sys_microservices, sys_event_driven\n\n"
+        "Code-level explainers           Use function, class, file, module nodes.\n"
+        "  • Implementation plans          Set status='added'/'modified'/'deleted' on\n"
+        "  • Bug fixes with diffs            changed nodes → triggers a Changes tab.\n"
+        "  • Call graph walkthroughs       Add code_snippet + previous_code_snippet to\n"
+        "  • API / schema maps               show what changed and why.\n"
+        "                                → Examples: code_impl_plan, code_bug_fix\n\n"
 
         "── ALWAYS START HERE ──────────────────────────────────────────────────────────\n"
-        "Call get_example('sys_microservices') before building your first spec.\n"
-        "Read the full example to understand the schema, then adapt it for your system.\n\n"
+        "Call get_example('sys_microservices') for system-level or get_example('code_bug_fix')\n"
+        "for code-level work. Read the example, then adapt it for your system.\n\n"
 
         "── SPEC SCHEMA ────────────────────────────────────────────────────────────────\n"
         "{\n"
@@ -16,21 +23,27 @@ def build_tool_description() -> str:
         '  "description": "optional one-liner",\n'
         '  "nodes": [\n'
         "    {\n"
-        '      "id": "api",           // unique — used in edges / groups / sequences\n'
+        '      "id": "api",                    // unique — used in edges / groups / sequences\n'
         '      "label": "API Server",\n'
-        '      "kind": "service",     // service | module | class | db | queue | external | package | file | function\n'
-        '      "description": "...",  // optional — shown in the detail panel on click\n'
-        '      "tech": "Go",          // optional — rendered as sub-label\n'
-        '      "owner": "team-name",  // optional\n'
-        '      "status": "stable",    // optional — stable | experimental | deprecated | planned\n'
-        '      "tags": ["critical"]   // optional\n'
+        '      "kind": "service",              // see node kinds below\n'
+        '      "description": "...",           // optional — shown in the detail panel on click\n'
+        '      "tech": "Go",                   // optional — rendered as sub-label\n'
+        '      "owner": "team-name",           // optional\n'
+        '      "status": "stable",             // optional — see status values below\n'
+        '      "tags": ["critical"],           // optional\n'
+        '      // Code-level fields (use with function / class / file nodes):\n'
+        '      "signature": "func Parse(r io.Reader) (*AST, error)",  // shown above snippet\n'
+        '      "code_snippet": "func Parse(...) {\\n  ...\\n}",        // shown with syntax highlight\n'
+        '      "previous_code_snippet": "func Parse(...) {\\n  // old\\n}", // for diff view\n'
+        '      "file_path": "src/parser/parser.go",\n'
+        '      "line_range": [42, 87]\n'
         "    }\n"
         "  ],\n"
         '  "edges": [\n'
         "    {\n"
         '      "from": "ui",\n'
         '      "to": "api",\n'
-        '      "kind": "calls",       // calls | imports | depends | emits | subscribes | reads | writes | deploys | owns\n'
+        '      "kind": "calls",       // see edge kinds below\n'
         '      "label": "REST",       // optional\n'
         '      "async": false,        // optional — true → dashed line\n'
         '      "protocol": "HTTP"     // optional — informational\n'
@@ -44,7 +57,7 @@ def build_tool_description() -> str:
         '      "members": ["ui", "client"]\n'
         "    }\n"
         "  ],\n"
-        '  "sequences": [             // optional — creates a Sequences tab with swim-lane diagrams\n'
+        '  "sequences": [             // optional — creates a Sequences tab\n'
         "    {\n"
         '      "id": "login",\n'
         '      "label": "Login Flow",\n'
@@ -56,11 +69,27 @@ def build_tool_description() -> str:
         "  ]\n"
         "}\n\n"
 
+        "── NODE KINDS ─────────────────────────────────────────────────────────────────\n"
+        "  System level:  service · db · queue · external · module\n"
+        "  Code level:    function · class · file · package\n\n"
+
+        "── EDGE KINDS ─────────────────────────────────────────────────────────────────\n"
+        "  System: calls · imports · depends · emits · subscribes · reads · writes · deploys · owns\n"
+        "  Code:   returns · throws · overrides · implements · instantiates\n\n"
+
+        "── STATUS VALUES ──────────────────────────────────────────────────────────────\n"
+        "  General:       stable · experimental · deprecated · planned\n"
+        "  Change tracking (trigger Changes tab + colored borders in Architecture view):\n"
+        "                 added (green) · modified (amber) · deleted (red/faded)\n\n"
+
         "── WHAT THE TOOL PRODUCES ─────────────────────────────────────────────────────\n"
-        "Architecture tab   Box-and-arrow diagram. Click any node for a detail panel.\n"
-        "                   Filter bar lets users hide/show node kinds.\n"
+        "Architecture tab   Box-and-arrow diagram. Click any node for a detail panel\n"
+        "                   (shows description, signature, code snippet, edges).\n"
+        "                   Filter bar lets users hide/show node kinds and change statuses.\n"
         "Layers tab         Horizontal swim-lanes (only if groups with kind='layer' exist).\n"
         "Sequences tab      Sequence diagrams with dropdown selector (only if sequences exist).\n"
+        "Changes tab        Before/after diff view grouped by added/modified/deleted\n"
+        "                   (only if any node has a change-tracking status).\n"
         "Matrix tab         Adjacency matrix — who calls whom at a glance.\n"
         "Components tab     Filterable table of all nodes with all metadata.\n\n"
 

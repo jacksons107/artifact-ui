@@ -554,7 +554,7 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: v
 """
 
 
-def page_wrapper(title: str, body_html: str, extra_css: str = "", wide: bool = False) -> str:
+def page_wrapper(title: str, body_html: str, extra_css: str = "", wide: bool = False, extra_head: str = "") -> str:
     page_class = "page-wide" if wide else "page"
     css = BASE_CSS + extra_css
     return f"""<!DOCTYPE html>
@@ -564,6 +564,7 @@ def page_wrapper(title: str, body_html: str, extra_css: str = "", wide: bool = F
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{_html.escape(title)}</title>
   <style>{css}</style>
+  {extra_head}
 </head>
 <body>
   <div class="{page_class}">
