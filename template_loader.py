@@ -12,10 +12,15 @@ def build_tool_description() -> str:
         "  • Call graph walkthroughs       Add code_snippet + previous_code_snippet to\n"
         "  • API / schema maps               show what changed and why.\n"
         "                                → Examples: code_impl_plan, code_bug_fix\n\n"
+        "System + code together          Give a group a 'detail' block (nested\n"
+        "                                nodes/edges using code-level kinds) → adds\n"
+        "                                a 'Code Detail' tab with a per-module drill-down.\n"
+        "                                → Example: mixed_levels\n\n"
 
         "── ALWAYS START HERE ──────────────────────────────────────────────────────────\n"
-        "Call get_example('sys_microservices') for system-level or get_example('code_bug_fix')\n"
-        "for code-level work. Read the example, then adapt it for your system.\n\n"
+        "Call get_example('sys_microservices') for system-level, get_example('code_bug_fix')\n"
+        "for code-level, or get_example('mixed_levels') to combine both. Read the example,\n"
+        "then adapt it for your system.\n\n"
 
         "── SPEC SCHEMA ────────────────────────────────────────────────────────────────\n"
         "{\n"
@@ -54,7 +59,15 @@ def build_tool_description() -> str:
         '      "id": "frontend",\n'
         '      "label": "Frontend",\n'
         '      "kind": "layer",       // layer | package | team | domain | deployment\n'
-        '      "members": ["ui", "client"]\n'
+        '      "members": ["ui", "client"],\n'
+        '      // optional — nested code-level spec for this group, shown in a\n'
+        '      // "Code Detail" tab with a per-group dropdown. Same node/edge\n'
+        '      // shape as the top level, own id namespace, code-level kinds/fields.\n'
+        '      "detail": {\n'
+        '        "nodes": [{"id": "handler", "label": "handle_request()", "kind": "function",\n'
+        '                   "signature": "def handle_request(req) -> Response", "code_snippet": "..."}],\n'
+        '        "edges": [{"from": "handler", "to": "handler", "kind": "calls"}]\n'
+        "      }\n"
         "    }\n"
         "  ],\n"
         '  "sequences": [             // optional — creates a Sequences tab\n'
@@ -88,8 +101,10 @@ def build_tool_description() -> str:
         "                   Filter bar lets users hide/show node kinds and change statuses.\n"
         "Layers tab         Horizontal swim-lanes (only if groups with kind='layer' exist).\n"
         "Sequences tab      Sequence diagrams with dropdown selector (only if sequences exist).\n"
+        "Code Detail tab    Per-group function/class drill-down with a module dropdown\n"
+        "                   (only if any group has a 'detail' block).\n"
         "Changes tab        Before/after diff view grouped by added/modified/deleted\n"
-        "                   (only if any node has a change-tracking status).\n"
+        "                   (checks top-level nodes AND group 'detail' nodes).\n"
         "Matrix tab         Adjacency matrix — who calls whom at a glance.\n"
         "Components tab     Filterable table of all nodes with all metadata.\n\n"
 

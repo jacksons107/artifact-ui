@@ -80,6 +80,32 @@ PAD    = 56
 
 # ── Validation ────────────────────────────────────────────────────────────────
 
+def _validate_nodes_edges(nodes: list, edges: list, context: str) -> set:
+    node_ids = set()
+    for i, node in enumerate(nodes):
+        if "id" not in node:
+            raise ValueError(f"{context}nodes[{i}] is missing required field 'id'.")
+        if "label" not in node:
+            raise ValueError(f"{context}nodes[{i}] (id={node['id']!r}) is missing required field 'label'.")
+        if node["id"] in node_ids:
+            raise ValueError(f"{context}nodes[{i}]: duplicate node id {node['id']!r}.")
+        node_ids.add(node["id"])
+
+    for i, edge in enumerate(edges):
+        src = edge.get("from")
+        dst = edge.get("to")
+        if src is None:
+            raise ValueError(f"{context}edges[{i}] is missing required field 'from'.")
+        if dst is None:
+            raise ValueError(f"{context}edges[{i}] is missing required field 'to'.")
+        if src not in node_ids:
+            raise ValueError(f"{context}edges[{i}]: 'from' references unknown node id {src!r}.")
+        if dst not in node_ids:
+            raise ValueError(f"{context}edges[{i}]: 'to' references unknown node id {dst!r}.")
+
+    return node_ids
+
+
 def parse_spec(data: dict) -> dict:
     title  = data.get("title", "Untitled System")
     nodes  = data.get("nodes", [])
@@ -90,27 +116,7 @@ def parse_spec(data: dict) -> dict:
     if not nodes:
         raise ValueError("system_spec requires at least one node in 'nodes'.")
 
-    node_ids = set()
-    for i, node in enumerate(nodes):
-        if "id" not in node:
-            raise ValueError(f"nodes[{i}] is missing required field 'id'.")
-        if "label" not in node:
-            raise ValueError(f"nodes[{i}] (id={node['id']!r}) is missing required field 'label'.")
-        if node["id"] in node_ids:
-            raise ValueError(f"nodes[{i}]: duplicate node id {node['id']!r}.")
-        node_ids.add(node["id"])
-
-    for i, edge in enumerate(edges):
-        src = edge.get("from")
-        dst = edge.get("to")
-        if src is None:
-            raise ValueError(f"edges[{i}] is missing required field 'from'.")
-        if dst is None:
-            raise ValueError(f"edges[{i}] is missing required field 'to'.")
-        if src not in node_ids:
-            raise ValueError(f"edges[{i}]: 'from' references unknown node id {src!r}.")
-        if dst not in node_ids:
-            raise ValueError(f"edges[{i}]: 'to' references unknown node id {dst!r}.")
+    node_ids = _validate_nodes_edges(nodes, edges, "")
 
     for i, group in enumerate(groups):
         if "id" not in group:
@@ -122,6 +128,12 @@ def parse_spec(data: dict) -> dict:
                 raise ValueError(
                     f"groups[{i}] (id={group['id']!r}): member {member!r} is not a known node id."
                 )
+        detail = group.get("detail")
+        if detail:
+            _validate_nodes_edges(
+                detail.get("nodes", []), detail.get("edges", []),
+                f"groups[{i}] (id={group['id']!r}).detail."
+            )
 
     for i, seq in enumerate(seqs):
         if "id" not in seq:
@@ -229,7 +241,7 @@ def _e(s) -> str:
     return _html.escape(str(s))
 
 
-def render_architecture_svg(spec: dict, positions: dict) -> str:
+def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") -> str:
     nodes  = spec["nodes"]
     edges  = spec["edges"]
     groups = spec["groups"]
@@ -241,7 +253,7 @@ def render_architecture_svg(spec: dict, positions: dict) -> str:
     W = int(max(p["x"] + p["w"] for p in pos.values()) + PAD)
     H = int(max(p["y"] + p["h"] for p in pos.values()) + PAD)
 
-    parts = [f'<svg viewBox="0 0 {W} {H}" style="display:block;width:100%;height:auto;max-height:680px" id="sys-svg">']
+    parts = [f'<svg viewBox="0 0 {W} {H}" style="display:block;width:100%;height:auto;max-height:680px" id="{_e(id_prefix)}sys-svg">']
 
     # Arrow markers — one per edge color in use
     parts.append("<defs>")
@@ -347,7 +359,7 @@ def render_architecture_svg(spec: dict, positions: dict) -> str:
         icon = nst["icon"]
         opacity_attr = ' opacity="0.5"' if status == "deleted" else ""
         parts.append(
-            f'<g class="sys-node" data-id="{_e(nid)}" data-kind="{_e(kind)}" data-status="{_e(status)}" '
+            f'<g class="sys-node" data-id="{_e(id_prefix + nid)}" data-kind="{_e(kind)}" data-status="{_e(status)}" '
             f'style="cursor:pointer"{opacity_attr} onclick="sysClick(this)">'
         )
         parts.append(
@@ -382,7 +394,7 @@ def render_architecture_svg(spec: dict, positions: dict) -> str:
 
 # ── Detail panels ─────────────────────────────────────────────────────────────
 
-def render_detail_panels(spec: dict) -> str:
+def render_detail_panels(spec: dict, id_prefix: str = "") -> str:
     nodes  = spec["nodes"]
     edges  = spec["edges"]
     by_id  = {n["id"]: n for n in nodes}
@@ -399,7 +411,7 @@ def render_detail_panels(spec: dict) -> str:
         kind = node.get("kind", "")
         nst  = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
 
-        html = f'<div class="sys-panel" id="panel-{_e(nid)}" style="display:none">'
+        html = f'<div class="sys-panel" id="panel-{_e(id_prefix + nid)}" style="display:none">'
         html += '<div class="sys-ph">'
         html += f'<span style="color:{nst["stroke"]};font-size:14px">{nst["icon"]}</span>'
         html += f'<span class="sys-plabel">{_e(node.get("label", nid))}</span>'
@@ -1036,10 +1048,53 @@ def render_filter_bar(spec: dict) -> str:
     return html
 
 
+# ── Code detail tab ───────────────────────────────────────────────────────────
+
+def render_code_detail_html(spec: dict) -> str:
+    detail_groups = [g for g in spec["groups"] if g.get("detail", {}).get("nodes")]
+    if not detail_groups:
+        return ""
+
+    html = '<div class="sys-cd-wrap"><div class="sys-cd-controls">'
+    html += '<span class="sys-fl">Module</span>'
+    html += '<select class="sys-cd-sel" onchange="sysCodeDetailChange(this)">'
+    for g in detail_groups:
+        html += f'<option value="{_e(g["id"])}">{_e(g.get("label", g["id"]))}</option>'
+    html += '</select>'
+    html += '</div>'
+
+    for i, g in enumerate(detail_groups):
+        detail = g["detail"]
+        sub = parse_spec({
+            "title": g.get("label", g["id"]),
+            "nodes": detail["nodes"],
+            "edges": detail.get("edges", []),
+        })
+        positions = layout_graph(sub["nodes"], sub["edges"], [])
+        prefix = f'cd-{g["id"]}-'
+        svg    = render_architecture_svg(sub, positions, id_prefix=prefix)
+        panels = render_detail_panels(sub, id_prefix=prefix)
+        legend = render_legend(sub)
+
+        display = '' if i == 0 else ' style="display:none"'
+        html += f'<div id="cdp-{_e(g["id"])}" class="sys-cd-panel"{display}>'
+        html += '<div class="sys-wrap">'
+        html += '<div class="sys-main"><div class="sys-diagram">' + svg + '</div></div>'
+        html += '<div class="sys-sidebar">'
+        html += '<div class="sys-hint">Click a node<br>to see details</div>'
+        html += panels
+        html += legend
+        html += '</div>'
+        html += '</div>'
+        html += '</div>'
+
+    html += '</div>'
+    return html
+
+
 # ── Changes tab ──────────────────────────────────────────────────────────────
 
-def render_changes_html(spec: dict) -> str:
-    nodes = spec["nodes"]
+def render_changes_html(nodes: list) -> str:
     added    = [n for n in nodes if n.get("status") == "added"]
     modified = [n for n in nodes if n.get("status") == "modified"]
     deleted  = [n for n in nodes if n.get("status") == "deleted"]
@@ -1201,6 +1256,14 @@ _CSS = """
                appearance: none; -webkit-appearance: none; }
 .sys-seq-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
 
+/* ── Code detail view ──────────────────────────── */
+.sys-cd-wrap { display: flex; flex-direction: column; gap: 14px; }
+.sys-cd-controls { display: flex; align-items: center; gap: 10px; }
+.sys-cd-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
+              padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
+              appearance: none; -webkit-appearance: none; }
+.sys-cd-panel { display: flex; flex-direction: column; gap: 12px; }
+
 /* ── Dependency matrix ────────────────────────── */
 .sys-matrix-wrap { overflow-x: auto; background: var(--white); border: var(--border); border-radius: 12px; }
 .sys-mtx { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
@@ -1259,18 +1322,19 @@ var _active = null;
 function sysClick(el) {
     var nid = el.getAttribute('data-id');
     var panel = document.getElementById('panel-' + nid);
-    var hint = document.getElementById('sys-hint');
+    var wrap = el.closest('.sys-wrap');
+    var hint = wrap ? wrap.querySelector('.sys-hint') : null;
 
     if (_active === el) {
         el.classList.remove('active');
         _active = null;
-        document.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+        if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
         if (hint) hint.style.display = 'block';
         return;
     }
 
     if (_active) _active.classList.remove('active');
-    document.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+    if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
 
     el.classList.add('active');
     _active = el;
@@ -1311,6 +1375,14 @@ function sysSeqChange(sel) {
     });
 }
 
+/* ── Code detail selector ──────────────────────── */
+function sysCodeDetailChange(sel) {
+    var val = sel.value;
+    document.querySelectorAll('.sys-cd-panel').forEach(function(p) {
+        p.style.display = (p.id === 'cdp-' + val) ? '' : 'none';
+    });
+}
+
 /* ── Component list filters ────────────────────── */
 function sysFKind(btn) {
     btn.classList.toggle('active');
@@ -1348,14 +1420,20 @@ def render_system_spec(data: dict) -> str:
     comp_list  = render_component_list_html(spec)
     matrix     = render_matrix_html(spec)
 
+    all_nodes = spec["nodes"] + [
+        n for g in spec["groups"] for n in g.get("detail", {}).get("nodes", [])
+    ]
+
     has_layers  = any(g.get("kind") == "layer" for g in spec["groups"])
     has_seqs    = bool(spec.get("sequences"))
-    has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in spec["nodes"])
-    has_snippets = any(n.get("code_snippet") for n in spec["nodes"])
+    has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in all_nodes)
+    has_snippets = any(n.get("code_snippet") for n in all_nodes) or has_changes
 
-    layer_svg   = render_layer_svg(spec) if has_layers else ""
-    seq_html    = render_sequence_html(spec) if has_seqs else ""
-    changes_html = render_changes_html(spec) if has_changes else ""
+    layer_svg    = render_layer_svg(spec) if has_layers else ""
+    seq_html     = render_sequence_html(spec) if has_seqs else ""
+    code_detail_html = render_code_detail_html(spec)
+    has_code_detail  = bool(code_detail_html)
+    changes_html = render_changes_html(all_nodes) if has_changes else ""
 
     desc_html = f'<p class="sys-desc">{_e(spec["description"])}</p>' if spec["description"] else ""
 
@@ -1375,6 +1453,8 @@ def render_system_spec(data: dict) -> str:
         tabs += '<button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button>'
     if has_seqs:
         tabs += '<button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button>'
+    if has_code_detail:
+        tabs += '<button class="sys-tab" data-view="codedetail" onclick="sysTab(this)">Code Detail</button>'
     if has_changes:
         tabs += '<button class="sys-tab" data-view="changes" onclick="sysTab(this)">Changes</button>'
     tabs += '<button class="sys-tab" data-view="matrix" onclick="sysTab(this)">Matrix</button>'
@@ -1406,6 +1486,11 @@ def render_system_spec(data: dict) -> str:
   {seq_html}
 </div>""" if has_seqs else ""
 
+    code_detail_view = f"""
+<div id="view-codedetail" class="sys-view" style="display:none">
+  {code_detail_html}
+</div>""" if has_code_detail else ""
+
     changes_view = f"""
 <div id="view-changes" class="sys-view" style="display:none">
   {changes_html}
@@ -1427,6 +1512,7 @@ def render_system_spec(data: dict) -> str:
 {arch_view}
 {layer_view}
 {seq_view}
+{code_detail_view}
 {changes_view}
 {matrix_view}
 {comp_view}
