@@ -118,7 +118,25 @@ def build_tool_description() -> str:
         ")\n\n"
 
         "mode: 'immediate' returns at once. 'interactive' blocks until window.artifact.submit(payload) is called.\n"
-        "Prefer render_artifact(mode='interactive') over AskUserQuestion for decisions."
+        "Prefer render_artifact(mode='interactive') over AskUserQuestion for decisions.\n\n"
+
+        "── EPHEMERAL VS PERSISTENT ARTIFACTS ───────────────────────────────────────────\n"
+        "Every render_artifact call writes its spec alongside the HTML (as a sibling\n"
+        "'<name>.spec.json'), even for ephemeral /tmp previews — so any artifact can be\n"
+        "read back and edited later.\n\n"
+
+        "Ephemeral (default): just call render_artifact as above. It opens a /tmp preview.\n"
+        "If the user wants to keep it, call save_artifact(artifact_id, path) to copy the\n"
+        "html + spec to a real path in the project — no manual Downloads-folder shuffling.\n\n"
+
+        "Persistent (living documentation, e.g. a repo's index.html): pass an absolute\n"
+        "'path' to render_artifact — it writes the HTML and '<name>.spec.json' there\n"
+        "directly (in addition to the /tmp preview), with no localhost/save-button JS\n"
+        "injected, so it's safe to publish (e.g. GitHub Pages).\n\n"
+
+        "To edit a persistent artifact later: get_artifact_spec(path) returns its spec,\n"
+        "edit the JSON, then render_artifact(..., data=<edited spec>, path=path) to\n"
+        "update it in place."
     )
 
 

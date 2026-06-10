@@ -1,0 +1,516 @@
+{
+  "title": "artifact-ui \u2014 How This Tool Works",
+  "description": "artifact-ui is an MCP tool that turns a JSON 'system_spec' into an interactive, multi-view HTML diagram (Architecture, Layers, Sequences, Code Detail, Matrix, Components). This page documents the tool's own architecture at the system level (below) and, via the Code Detail tab, drills into both the key rendering/persistence functions in server.py and system_spec.py, and the system_spec JSON format itself \u2014 i.e. what an agent actually generates.",
+  "nodes": [
+    {
+      "id": "agent",
+      "label": "AI Agent",
+      "kind": "external",
+      "description": "Claude (or another MCP client) calling the artifact-ui tools to explain code, plans, or architecture.",
+      "tech": "Claude Code"
+    },
+    {
+      "id": "mcp_server",
+      "label": "MCP Server",
+      "kind": "service",
+      "description": "stdio JSON-RPC MCP server + a FastAPI app on :8765, sharing one asyncio event loop. Exposes get_example, render_artifact, save_artifact, get_artifact_spec.",
+      "tech": "Python \u00b7 FastAPI \u00b7 MCP",
+      "file_path": "server.py"
+    },
+    {
+      "id": "system_spec",
+      "label": "system_spec",
+      "kind": "module",
+      "description": "Core renderer: validates specs, lays out the architecture diagram (Kahn's longest-path layout), and renders all six views.",
+      "tech": "Python",
+      "file_path": "system_spec.py"
+    },
+    {
+      "id": "examples",
+      "label": "system_spec_examples",
+      "kind": "module",
+      "description": "Library of example specs (sys_microservices, sys_event_driven, sys_monolith, code_impl_plan, code_bug_fix, mixed_levels) returned by get_example.",
+      "tech": "Python",
+      "file_path": "system_spec_examples.py"
+    },
+    {
+      "id": "template_loader",
+      "label": "template_loader",
+      "kind": "module",
+      "description": "Builds the render_artifact tool description (use cases, schema, vocab) shown to the agent.",
+      "tech": "Python",
+      "file_path": "template_loader.py"
+    },
+    {
+      "id": "design_system",
+      "label": "design_system",
+      "kind": "module",
+      "description": "Shared HTML page shell, CSS tokens, and the page_wrapper() used by every rendered artifact.",
+      "tech": "Python",
+      "file_path": "design_system.py"
+    },
+    {
+      "id": "spec_format",
+      "label": "system_spec Format",
+      "kind": "module",
+      "description": "The JSON schema an agent writes as the 'data' argument to render_artifact: nodes, edges, groups (optionally with a nested 'detail' for the Code Detail tab), and sequences.",
+      "tech": "JSON"
+    },
+    {
+      "id": "storage",
+      "label": "Artifact Storage",
+      "kind": "db",
+      "description": "Ephemeral previews under /tmp/artifact_ui/{id}/{id}.html + {id}.spec.json, plus optional persistent paths (e.g. this index.html + index.spec.json) written when 'path' is given to render_artifact.",
+      "tech": "Filesystem"
+    },
+    {
+      "id": "browser",
+      "label": "Browser Tab",
+      "kind": "external",
+      "description": "Opened via webbrowser.open() to preview the rendered artifact, with an injected Save button for ephemeral artifacts."
+    }
+  ],
+  "edges": [
+    {
+      "from": "agent",
+      "to": "mcp_server",
+      "kind": "calls",
+      "label": "MCP tools"
+    },
+    {
+      "from": "mcp_server",
+      "to": "template_loader",
+      "kind": "calls",
+      "label": "build_tool_description()"
+    },
+    {
+      "from": "mcp_server",
+      "to": "examples",
+      "kind": "reads",
+      "label": "EXAMPLES[name]"
+    },
+    {
+      "from": "mcp_server",
+      "to": "system_spec",
+      "kind": "calls",
+      "label": "render_system_spec(data)"
+    },
+    {
+      "from": "system_spec",
+      "to": "design_system",
+      "kind": "imports",
+      "label": "page_wrapper()"
+    },
+    {
+      "from": "system_spec",
+      "to": "spec_format",
+      "kind": "depends",
+      "label": "validates & renders"
+    },
+    {
+      "from": "examples",
+      "to": "spec_format",
+      "kind": "instantiates",
+      "label": "example specs"
+    },
+    {
+      "from": "template_loader",
+      "to": "spec_format",
+      "kind": "depends",
+      "label": "documents schema for agent"
+    },
+    {
+      "from": "mcp_server",
+      "to": "storage",
+      "kind": "writes",
+      "label": "html + spec.json"
+    },
+    {
+      "from": "mcp_server",
+      "to": "storage",
+      "kind": "reads",
+      "label": "spec.json"
+    },
+    {
+      "from": "mcp_server",
+      "to": "browser",
+      "kind": "calls",
+      "label": "webbrowser.open()"
+    }
+  ],
+  "groups": [
+    {
+      "id": "agent_layer",
+      "label": "Agent",
+      "kind": "layer",
+      "members": [
+        "agent"
+      ]
+    },
+    {
+      "id": "mcp_layer",
+      "label": "MCP Server",
+      "kind": "layer",
+      "members": [
+        "mcp_server"
+      ],
+      "detail": {
+        "nodes": [
+          {
+            "id": "render_artifact_handler",
+            "label": "render_artifact handler",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "server.py",
+            "description": "The render_artifact branch of call_tool(). Writes the spec alongside the HTML for the ephemeral /tmp artifact, and additionally writes both to an optional persistent 'path' (no Save-button JS injected there).",
+            "signature": "async def call_tool(name, arguments) -> list[TextContent]  # 'render_artifact' branch",
+            "code_snippet": "rendered_html = renderer(data)\nhtml = inject_runtime(rendered_html, artifact_id)\nartifact_dir = ARTIFACT_DIR / artifact_id\nartifact_dir.mkdir(parents=True, exist_ok=True)\n(artifact_dir / f\"{artifact_id}.html\").write_text(html, encoding=\"utf-8\")\n(artifact_dir / f\"{artifact_id}.spec.json\").write_text(json.dumps(data, indent=2), encoding=\"utf-8\")\n\npersist_path = arguments.get(\"path\")\nif persist_path:\n    dest = Path(persist_path)\n    dest.parent.mkdir(parents=True, exist_ok=True)\n    dest.write_text(rendered_html, encoding=\"utf-8\")\n    spec_path_for(dest).write_text(json.dumps(data, indent=2), encoding=\"utf-8\")"
+          },
+          {
+            "id": "spec_path_for",
+            "label": "spec_path_for()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "server.py",
+            "description": "Maps an artifact's .html path to its sibling spec path, e.g. index.html -> index.spec.json.",
+            "signature": "def spec_path_for(html_path: Path) -> Path",
+            "code_snippet": "def spec_path_for(html_path: Path) -> Path:\n    return html_path.with_suffix(\"\").with_suffix(\".spec.json\")"
+          },
+          {
+            "id": "save_artifact_tool",
+            "label": "save_artifact()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "server.py",
+            "description": "MCP tool. Promotes an ephemeral /tmp artifact (html + spec.json) to a persistent path, e.g. into this repo, creating directories as needed.",
+            "signature": "async def call_tool('save_artifact', {artifact_id, path})"
+          },
+          {
+            "id": "get_artifact_spec_tool",
+            "label": "get_artifact_spec()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "server.py",
+            "description": "MCP tool. Reads back the sibling '<name>.spec.json' for a persistent artifact's .html path, so an agent can edit and re-render it in place.",
+            "signature": "async def call_tool('get_artifact_spec', {path})"
+          },
+          {
+            "id": "serve_artifact",
+            "label": "serve_artifact()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "server.py",
+            "description": "FastAPI route serving the /tmp preview, reading from the per-artifact directory layout.",
+            "signature": "async def serve_artifact(artifact_id: str)",
+            "code_snippet": "path = ARTIFACT_DIR / artifact_id / f\"{artifact_id}.html\""
+          }
+        ],
+        "edges": [
+          {
+            "from": "render_artifact_handler",
+            "to": "spec_path_for",
+            "kind": "calls"
+          },
+          {
+            "from": "save_artifact_tool",
+            "to": "spec_path_for",
+            "kind": "calls"
+          },
+          {
+            "from": "get_artifact_spec_tool",
+            "to": "spec_path_for",
+            "kind": "calls"
+          }
+        ]
+      }
+    },
+    {
+      "id": "render_layer",
+      "label": "Rendering",
+      "kind": "layer",
+      "members": [
+        "system_spec",
+        "examples",
+        "template_loader",
+        "design_system"
+      ],
+      "detail": {
+        "nodes": [
+          {
+            "id": "parse_spec",
+            "label": "parse_spec()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "system_spec.py",
+            "description": "Validates the spec via _validate_nodes_edges(), reused for the top-level spec AND for each group's optional 'detail' block (its own id namespace).",
+            "signature": "def parse_spec(data: dict) -> dict"
+          },
+          {
+            "id": "layout_graph",
+            "label": "layout_graph()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "system_spec.py",
+            "description": "Assigns node positions using Kahn's longest-path layering, co-locating nodes from the same group within a layer.",
+            "signature": "def layout_graph(nodes, edges, groups) -> dict"
+          },
+          {
+            "id": "render_architecture_svg",
+            "label": "render_architecture_svg()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "system_spec.py",
+            "description": "Renders the architecture diagram SVG. Takes an id_prefix param so multiple diagrams (one per Code Detail group) can coexist on one page without id collisions, and applies change-status coloring when a node has status added/modified/deleted.",
+            "signature": "def render_architecture_svg(spec, positions, id_prefix=\"\") -> str"
+          },
+          {
+            "id": "render_detail_panels",
+            "label": "render_detail_panels()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "system_spec.py",
+            "description": "Renders the per-node sidebar detail panels (description, signature, code snippet). Takes the same id_prefix param to match prefixed node ids.",
+            "signature": "def render_detail_panels(spec, id_prefix=\"\") -> str"
+          },
+          {
+            "id": "render_code_detail_html",
+            "label": "render_code_detail_html()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "system_spec.py",
+            "description": "For each group with a 'detail' block, renders a nested mini architecture diagram + detail panels (using id_prefix), selectable via a 'Module' dropdown \u2014 this is the Code Detail tab you're reading right now.",
+            "signature": "def render_code_detail_html(spec: dict) -> str",
+            "code_snippet": "def render_code_detail_html(spec: dict) -> str:\n    detail_groups = [g for g in spec[\"groups\"] if g.get(\"detail\", {}).get(\"nodes\")]\n    if not detail_groups:\n        return \"\"\n    ...\n    for g in detail_groups:\n        sub = parse_spec({\"title\": g[\"label\"], \"nodes\": g[\"detail\"][\"nodes\"],\n                          \"edges\": g[\"detail\"].get(\"edges\", [])})\n        positions = layout_graph(sub[\"nodes\"], sub[\"edges\"], [])\n        prefix = f'cd-{g[\"id\"]}-'\n        svg    = render_architecture_svg(sub, positions, id_prefix=prefix)\n        panels = render_detail_panels(sub, id_prefix=prefix)\n        ..."
+          },
+          {
+            "id": "render_changes_html",
+            "label": "render_changes_html()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "system_spec.py",
+            "description": "Renders the Changes tab from a flat node list. render_system_spec passes top-level nodes PLUS every node from every group's 'detail', so a modified function inside a Code Detail group shows up there too. Only invoked when at least one node has status added/modified/deleted \u2014 not the case for this artifact.",
+            "signature": "def render_changes_html(nodes: list) -> str"
+          },
+          {
+            "id": "render_system_spec",
+            "label": "render_system_spec()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "system_spec.py",
+            "description": "Top-level entry point. Builds all_nodes (top-level + all group.detail nodes), computes render_code_detail_html(), and inserts a 'Code Detail' tab between Sequences and Matrix when any group has detail (a 'Changes' tab is inserted instead/also when any node has a change-tracking status).",
+            "signature": "def render_system_spec(data: dict) -> str"
+          }
+        ],
+        "edges": [
+          {
+            "from": "render_system_spec",
+            "to": "parse_spec",
+            "kind": "calls"
+          },
+          {
+            "from": "render_system_spec",
+            "to": "layout_graph",
+            "kind": "calls"
+          },
+          {
+            "from": "render_system_spec",
+            "to": "render_architecture_svg",
+            "kind": "calls"
+          },
+          {
+            "from": "render_system_spec",
+            "to": "render_detail_panels",
+            "kind": "calls"
+          },
+          {
+            "from": "render_system_spec",
+            "to": "render_code_detail_html",
+            "kind": "calls"
+          },
+          {
+            "from": "render_system_spec",
+            "to": "render_changes_html",
+            "kind": "calls"
+          },
+          {
+            "from": "render_code_detail_html",
+            "to": "parse_spec",
+            "kind": "calls"
+          },
+          {
+            "from": "render_code_detail_html",
+            "to": "layout_graph",
+            "kind": "calls"
+          },
+          {
+            "from": "render_code_detail_html",
+            "to": "render_architecture_svg",
+            "kind": "calls"
+          },
+          {
+            "from": "render_code_detail_html",
+            "to": "render_detail_panels",
+            "kind": "calls"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spec_layer",
+      "label": "Spec Language",
+      "kind": "layer",
+      "members": [
+        "spec_format"
+      ],
+      "detail": {
+        "nodes": [
+          {
+            "id": "node_concept",
+            "label": "Node",
+            "kind": "class",
+            "tech": "JSON",
+            "description": "A box in the Architecture diagram. 'kind' picks its icon/color (service, db, queue, external, module, function, class, file, package). Code-level fields (signature, code_snippet, previous_code_snippet, file_path, line_range, status) add the detail-panel snippet, location metadata, and Changes-tab entries.",
+            "signature": "nodes[]",
+            "code_snippet": "{\n  \"id\": \"orders\",              // unique, referenced by edges/groups/sequences\n  \"label\": \"Order Service\",\n  \"kind\": \"service\",           // service|db|queue|external|module|function|class|file|package\n  \"description\": \"...\",        // shown in the detail panel\n  \"tech\": \"Go\",                // sub-label\n  \"owner\": \"team-name\",\n  \"status\": \"stable\",          // stable|experimental|deprecated|planned\n                               // or added|modified|deleted -> Changes tab + colored border\n  \"tags\": [\"critical\"],\n  \"signature\": \"func ...\",      // code-level: shown above the snippet\n  \"code_snippet\": \"...\",        // code-level: syntax-highlighted\n  \"previous_code_snippet\": \"...\", // code-level: enables before/after diff\n  \"file_path\": \"src/...\",\n  \"line_range\": [10, 42]\n}"
+          },
+          {
+            "id": "edge_concept",
+            "label": "Edge",
+            "kind": "class",
+            "tech": "JSON",
+            "description": "An arrow from one node to another. 'kind' sets its color/style (calls, imports, depends, emits, subscribes, reads, writes, deploys, owns, returns, throws, overrides, implements, instantiates). 'async: true' or certain kinds render as dashed.",
+            "signature": "edges[]",
+            "code_snippet": "{\n  \"from\": \"ui\",                // node id\n  \"to\": \"api\",                  // node id\n  \"kind\": \"calls\",\n  \"label\": \"REST\",              // optional, shown on the arrow\n  \"async\": false,               // optional -> dashed line\n  \"protocol\": \"HTTP\"            // optional, informational\n}"
+          },
+          {
+            "id": "group_concept",
+            "label": "Group",
+            "kind": "class",
+            "tech": "JSON",
+            "description": "A labeled bounding box around a set of node ids. kind='layer' groups also become swim-lanes in the Layers tab. Other kinds (package, team, domain, deployment) are drawn but don't add a Layers lane.",
+            "signature": "groups[]",
+            "code_snippet": "{\n  \"id\": \"frontend\",\n  \"label\": \"Frontend\",\n  \"kind\": \"layer\",              // layer|package|team|domain|deployment\n  \"members\": [\"ui\", \"client\"],  // node ids\n  \"detail\": { ... }             // optional, see Group.detail\n}"
+          },
+          {
+            "id": "group_detail_concept",
+            "label": "Group.detail",
+            "kind": "class",
+            "tech": "JSON",
+            "description": "An optional nested spec on a group: its own 'nodes' and 'edges' (own id namespace, typically function/class/file kinds). Each group with a non-empty detail.nodes gets an entry in the Code Detail tab's module dropdown, rendered as its own mini architecture diagram + detail panels. This Spec Language section is itself a Group.detail.",
+            "signature": "groups[].detail",
+            "code_snippet": "{\n  \"nodes\": [\n    {\"id\": \"handler\", \"label\": \"handle_request()\", \"kind\": \"function\",\n     \"signature\": \"def handle_request(req) -> Response\", \"code_snippet\": \"...\"}\n  ],\n  \"edges\": [\n    {\"from\": \"handler\", \"to\": \"handler\", \"kind\": \"calls\"}\n  ]\n}"
+          },
+          {
+            "id": "sequence_concept",
+            "label": "Sequence",
+            "kind": "class",
+            "tech": "JSON",
+            "description": "An ordered list of steps (from -> to, with a label) between top-level node ids, rendered as a sequence/swimlane diagram in the Sequences tab with a dropdown to pick between multiple sequences.",
+            "signature": "sequences[]",
+            "code_snippet": "{\n  \"id\": \"login\",\n  \"label\": \"Login Flow\",\n  \"steps\": [\n    {\"from\": \"client\", \"to\": \"api\", \"label\": \"POST /login\"},\n    {\"from\": \"api\", \"to\": \"db\", \"label\": \"lookup user\"}\n  ]\n}"
+          }
+        ],
+        "edges": [
+          {
+            "from": "edge_concept",
+            "to": "node_concept",
+            "kind": "depends",
+            "label": "from/to reference node ids"
+          },
+          {
+            "from": "group_concept",
+            "to": "node_concept",
+            "kind": "depends",
+            "label": "members reference node ids"
+          },
+          {
+            "from": "group_concept",
+            "to": "group_detail_concept",
+            "kind": "owns",
+            "label": "optional nested spec"
+          },
+          {
+            "from": "group_detail_concept",
+            "to": "node_concept",
+            "kind": "instantiates",
+            "label": "own node namespace"
+          },
+          {
+            "from": "sequence_concept",
+            "to": "node_concept",
+            "kind": "depends",
+            "label": "steps reference node ids"
+          }
+        ]
+      }
+    },
+    {
+      "id": "io_layer",
+      "label": "Storage & Output",
+      "kind": "layer",
+      "members": [
+        "storage",
+        "browser"
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "render_persist",
+      "label": "Render + persist an artifact (this page)",
+      "steps": [
+        {
+          "from": "agent",
+          "to": "mcp_server",
+          "label": "render_artifact(path='index.html', data=spec)"
+        },
+        {
+          "from": "mcp_server",
+          "to": "system_spec",
+          "label": "render_system_spec(data)"
+        },
+        {
+          "from": "mcp_server",
+          "to": "storage",
+          "label": "write /tmp/{id}/{id}.html + .spec.json"
+        },
+        {
+          "from": "mcp_server",
+          "to": "storage",
+          "label": "write index.html + index.spec.json"
+        },
+        {
+          "from": "mcp_server",
+          "to": "browser",
+          "label": "open /tmp preview"
+        }
+      ]
+    },
+    {
+      "id": "iterate",
+      "label": "Iterate on a persistent artifact later",
+      "steps": [
+        {
+          "from": "agent",
+          "to": "mcp_server",
+          "label": "get_artifact_spec('index.html')"
+        },
+        {
+          "from": "mcp_server",
+          "to": "storage",
+          "label": "read index.spec.json"
+        },
+        {
+          "from": "agent",
+          "to": "mcp_server",
+          "label": "render_artifact(path='index.html', data=<edited spec>)"
+        },
+        {
+          "from": "mcp_server",
+          "to": "storage",
+          "label": "overwrite index.html + index.spec.json"
+        }
+      ]
+    }
+  ]
+}

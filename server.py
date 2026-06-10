@@ -97,7 +97,7 @@ function __artifactSave() {{
 
 @app.get("/artifact/{artifact_id}")
 async def serve_artifact(artifact_id: str):
-    path = ARTIFACT_DIR / f"{artifact_id}.html"
+    path = ARTIFACT_DIR / artifact_id / f"{artifact_id}.html"
     if not path.exists():
         return JSONResponse({"error": "artifact not found"}, status_code=404)
     return FileResponse(path, media_type="text/html")
@@ -115,6 +115,13 @@ async def receive_event(body: ArtifactEvent):
         session["result"] = body.event
         session["event"].set()
     return {"ok": True}
+
+
+# ── Artifact persistence helpers ───────────────────────────────────────────────
+
+def spec_path_for(html_path: Path) -> Path:
+    """Sibling spec path for an artifact html path: foo/index.html -> foo/index.spec.json"""
+    return html_path.with_suffix("").with_suffix(".spec.json")
 
 
 # ── MCP tools ─────────────────────────────────────────────────────────────────
@@ -167,8 +174,62 @@ async def list_tools() -> list[types.Tool]:
                         "type": "object",
                         "description": "The system_spec JSON payload. See tool description for schema.",
                     },
+                    "path": {
+                        "type": "string",
+                        "description": (
+                            "Optional absolute path to an .html file. If set, the rendered HTML "
+                            "(and the spec as a sibling '<name>.spec.json') is also written there, "
+                            "in addition to the usual /tmp preview. Use this to create or update a "
+                            "persistent artifact that lives in the project (e.g. as living "
+                            "documentation), and pass the same path again on later renders to "
+                            "update it in place."
+                        ),
+                    },
                 },
                 "required": ["artifact_id", "title", "mode", "template", "data"],
+            },
+        ),
+        types.Tool(
+            name="save_artifact",
+            description=(
+                "Promote an already-rendered ephemeral artifact to a persistent location. "
+                "Copies the artifact's HTML and spec JSON to 'path' (and a sibling "
+                "'<name>.spec.json'), creating directories as needed. Use this after "
+                "render_artifact when the user wants to keep a previously-generated artifact "
+                "as a file in the project."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "artifact_id": {
+                        "type": "string",
+                        "description": "The artifact_id used in a previous render_artifact call.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute destination path for the .html file.",
+                    },
+                },
+                "required": ["artifact_id", "path"],
+            },
+        ),
+        types.Tool(
+            name="get_artifact_spec",
+            description=(
+                "Read back the spec JSON for a persisted artifact, given the path to its .html "
+                "file (looks for the sibling '<name>.spec.json'). Use this to load an existing "
+                "persistent artifact's spec before editing it and re-rendering with "
+                "render_artifact(path=...) to update it in place."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the artifact's .html file.",
+                    },
+                },
+                "required": ["path"],
             },
         )
     ]
@@ -185,21 +246,59 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             result = example
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
+    if name == "save_artifact":
+        artifact_id = arguments["artifact_id"]
+        dest = Path(arguments["path"])
+        src_dir = ARTIFACT_DIR / artifact_id
+        src_html = src_dir / f"{artifact_id}.html"
+        src_spec = src_dir / f"{artifact_id}.spec.json"
+        if not src_html.exists():
+            return [types.TextContent(type="text", text=json.dumps(
+                {"error": f"No ephemeral artifact found for artifact_id={artifact_id!r}. Render it first."}
+            ))]
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest_spec = spec_path_for(dest)
+        dest.write_text(src_html.read_text(encoding="utf-8"), encoding="utf-8")
+        if src_spec.exists():
+            dest_spec.write_text(src_spec.read_text(encoding="utf-8"), encoding="utf-8")
+        return [types.TextContent(type="text", text=json.dumps(
+            {"status": "saved", "path": str(dest), "spec_path": str(dest_spec)}
+        ))]
+
+    if name == "get_artifact_spec":
+        html_path = Path(arguments["path"])
+        spec_path = spec_path_for(html_path)
+        if not spec_path.exists():
+            return [types.TextContent(type="text", text=json.dumps(
+                {"error": f"No spec found at {spec_path}."}
+            ))]
+        return [types.TextContent(type="text", text=spec_path.read_text(encoding="utf-8"))]
+
     if name != "render_artifact":
         raise ValueError(f"Unknown tool: {name}")
 
     artifact_id = arguments["artifact_id"]
     mode = arguments["mode"]
     template = arguments.get("template", "system_spec")
+    data = arguments.get("data") or {}
 
     renderer = BUILTIN_RENDERERS.get(template)
     if renderer is None:
         raise ValueError(f"Unknown template: {template!r}. Valid: {list(BUILTIN_RENDERERS)}")
-    html = renderer(arguments.get("data") or {})
+    rendered_html = renderer(data)
 
-    html = inject_runtime(html, artifact_id)
-    path = ARTIFACT_DIR / f"{artifact_id}.html"
-    path.write_text(html, encoding="utf-8")
+    html = inject_runtime(rendered_html, artifact_id)
+    artifact_dir = ARTIFACT_DIR / artifact_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / f"{artifact_id}.html").write_text(html, encoding="utf-8")
+    (artifact_dir / f"{artifact_id}.spec.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    persist_path = arguments.get("path")
+    if persist_path:
+        dest = Path(persist_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(rendered_html, encoding="utf-8")
+        spec_path_for(dest).write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     session: dict[str, Any] = {"event": asyncio.Event(), "result": None}
     artifact_sessions[artifact_id] = session

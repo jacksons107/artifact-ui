@@ -1,7 +1,9 @@
-<html lang="en"><head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>artifact-ui — How It Works</title>
+  <title>artifact-ui — How This Tool Works</title>
   <style>
 :root {
   --ivory: #FAF9F5;
@@ -638,6 +640,14 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: v
                appearance: none; -webkit-appearance: none; }
 .sys-seq-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
 
+/* ── Code detail view ──────────────────────────── */
+.sys-cd-wrap { display: flex; flex-direction: column; gap: 14px; }
+.sys-cd-controls { display: flex; align-items: center; gap: 10px; }
+.sys-cd-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
+              padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
+              appearance: none; -webkit-appearance: none; }
+.sys-cd-panel { display: flex; flex-direction: column; gap: 12px; }
+
 /* ── Dependency matrix ────────────────────────── */
 .sys-matrix-wrap { overflow-x: auto; background: var(--white); border: var(--border); border-radius: 12px; }
 .sys-mtx { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
@@ -656,337 +666,559 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: v
 
 /* ── Description ──────────────────────────────── */
 .sys-desc { font-size: 14px; color: var(--gray-700); margin: 0 0 20px; line-height: 1.6; }
+
+/* ── Filter bar separator ─────────────────────── */
+.sys-fl-sep { display: inline-block; width: 1px; height: 16px; background: var(--gray-300); margin: 0 6px; vertical-align: middle; }
+
+/* ── Code snippet in detail panel ─────────────── */
+.sys-sig { margin: 10px 0 6px; padding: 6px 10px; background: var(--gray-100); border-left: 3px solid var(--clay); border-radius: 0 4px 4px 0; }
+.sys-sig code { font-family: var(--mono); font-size: 12px; color: var(--slate); }
+.sys-snippet { margin: 6px 0 0; }
+.sys-snippet pre { margin: 0; padding: 10px 12px; background: var(--ivory); border: var(--border); border-radius: 8px; overflow-x: auto; max-height: 320px; font-size: 0.78rem; line-height: 1.5; }
+.sys-snippet pre code { font-family: var(--mono); }
+
+/* ── Changes tab ──────────────────────────────── */
+.sys-changes { display: flex; flex-direction: column; gap: 24px; }
+.sys-chg-section { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.sys-chg-header { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 4px 0 4px 10px; border-left: 3px solid; letter-spacing: 0.04em; text-transform: uppercase; }
+.sys-chg-node { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sys-chg-label { font-family: var(--serif); font-size: 14px; }
+.sys-chg-fp { font-family: var(--mono); font-size: 11px; color: var(--gray-500); }
+.sys-chg-pre { margin: 4px 0 0; padding: 10px 12px; background: var(--ivory); border: var(--border); border-radius: 8px; overflow-x: auto; max-height: 360px; font-size: 0.78rem; line-height: 1.5; }
+.sys-chg-pre code { font-family: var(--mono); }
+.sys-chg-diff { display: flex; gap: 12px; flex-wrap: wrap; }
+.sys-chg-side { flex: 1 1 340px; display: flex; flex-direction: column; gap: 4px; }
+.sys-chg-side-label { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 </style>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded",function(){hljs.highlightAll();});</script>
 </head>
-<body style="overscroll-behavior-x: auto;">
+<body>
   <div class="page-wide">
     
-<p class="sys-desc">The artifact-ui MCP tool: from LLM tool call to interactive browser diagram. Click any node for details.</p>
-<div class="sys-tabs"><button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button><button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button><button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button><button class="sys-tab" data-view="matrix" onclick="sysTab(this)">Matrix</button><button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button></div>
+<p class="sys-desc">artifact-ui is an MCP tool that turns a JSON &#x27;system_spec&#x27; into an interactive, multi-view HTML diagram (Architecture, Layers, Sequences, Code Detail, Matrix, Components). This page documents the tool&#x27;s own architecture at the system level (below) and, via the Code Detail tab, drills into both the key rendering/persistence functions in server.py and system_spec.py, and the system_spec JSON format itself — i.e. what an agent actually generates.</p>
+<div class="sys-tabs"><button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button><button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button><button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button><button class="sys-tab" data-view="codedetail" onclick="sysTab(this)">Code Detail</button><button class="sys-tab" data-view="matrix" onclick="sysTab(this)">Matrix</button><button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button></div>
 
-<div id="view-arch" class="sys-view" style="display: block;">
-  <div class="sys-arch-filters"><span class="sys-fl">Show</span><button class="sys-fc active" data-ak="db" style="color:#788C5D;border-color:#788C5D" onclick="sysAKind(this)">⬡ db</button><button class="sys-fc active" data-ak="external" style="color:#87867F;border-color:#87867F" onclick="sysAKind(this)">◇ external</button><button class="sys-fc active" data-ak="file" style="color:#D1CFC5;border-color:#D1CFC5" onclick="sysAKind(this)">≡ file</button><button class="sys-fc active" data-ak="module" style="color:#87867F;border-color:#87867F" onclick="sysAKind(this)">□ module</button><button class="sys-fc active" data-ak="service" style="color:#D97757;border-color:#D97757" onclick="sysAKind(this)">◈ service</button></div>
+<div id="view-arch" class="sys-view">
+  <div class="sys-arch-filters"><span class="sys-fl">Show</span><button class="sys-fc active" data-ak="db" style="color:#788C5D;border-color:#788C5D" onclick="sysAKind(this)">⬡ db</button><button class="sys-fc active" data-ak="external" style="color:#87867F;border-color:#87867F" onclick="sysAKind(this)">◇ external</button><button class="sys-fc active" data-ak="module" style="color:#87867F;border-color:#87867F" onclick="sysAKind(this)">□ module</button><button class="sys-fc active" data-ak="service" style="color:#D97757;border-color:#D97757" onclick="sysAKind(this)">◈ service</button></div>
   <div class="sys-wrap">
     <div class="sys-main">
-      <div class="sys-diagram"><svg viewBox="0 0 292 1360" style="display:block;width:100%;height:auto;max-height:680px" id="sys-svg">
+      <div class="sys-diagram"><svg viewBox="0 0 1236 568" style="display:block;width:100%;height:auto;max-height:680px" id="sys-svg">
 <defs>
-<marker id="arr-D1CFC5" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D1CFC5"></path></marker>
-<marker id="arr-788C5D" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#788C5D"></path></marker>
-<marker id="arr-87867F" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#87867F"></path></marker>
-<marker id="arr-D97757" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D97757"></path></marker>
-<marker id="arr-B04A3F" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#B04A3F"></path></marker>
-<marker id="arr-C8C5BC" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"></path></marker>
+<marker id="arr-788C5D" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#788C5D"/></marker>
+<marker id="arr-D97757" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D97757"/></marker>
+<marker id="arr-B04A3F" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#B04A3F"/></marker>
+<marker id="arr-87867F" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#87867F"/></marker>
+<marker id="arr-C8C5BC" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"/></marker>
 </defs>
-<rect x="40.0" y="28.0" width="212.0" height="368.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"></rect>
-<text x="50.0" y="45.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Agent</text>
-<rect x="40.0" y="424.0" width="212.0" height="368.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"></rect>
-<text x="50.0" y="441.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Server</text>
-<rect x="40.0" y="820.0" width="212.0" height="236.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"></rect>
-<text x="50.0" y="837.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Rendering</text>
-<rect x="40.0" y="1084.0" width="212.0" height="236.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"></rect>
-<text x="50.0" y="1101.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Delivery</text>
-<path d="M146.0,116.0 C146.0,148.4 146.0,155.6 146.0,188.0" fill="none" stroke="#D1CFC5" stroke-width="1.5" marker-end="url(#arr-D1CFC5)"></path>
-<rect x="83.0" y="143.0" width="126.0" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="154.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5">session instructions</text>
-<path d="M146.0,248.0 C146.0,280.4 146.0,287.6 146.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
-<rect x="114.9" y="275.0" width="62.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">tool call</text>
-<path d="M146.0,380.0 C146.0,412.4 146.0,419.6 146.0,452.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
-<rect x="100.4" y="407.0" width="91.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="418.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">stdio JSON-RPC</text>
-<path d="M146.0,512.0 C146.0,544.4 146.0,551.6 146.0,584.0" fill="none" stroke="#87867F" stroke-width="1.5" marker-end="url(#arr-87867F)"></path>
-<rect x="91.7" y="539.0" width="108.6" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="550.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">build description</text>
-<path d="M146.0,512.0 C146.0,603.8 146.0,624.2 146.0,716.0" fill="none" stroke="#788C5D" stroke-width="1.5" marker-end="url(#arr-788C5D)"></path>
-<rect x="109.1" y="605.0" width="73.8" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="616.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D">get_example</text>
-<path d="M146.0,512.0 C146.0,663.2 146.0,696.8 146.0,848.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
-<rect x="83.0" y="671.0" width="126.0" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="682.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_system_spec()</text>
-<path d="M146.0,908.0 C146.0,940.4 146.0,947.6 146.0,980.0" fill="none" stroke="#87867F" stroke-width="1.5" marker-end="url(#arr-87867F)"></path>
-<path d="M146.0,512.0 C146.0,782.0 146.0,842.0 146.0,1112.0" fill="none" stroke="#B04A3F" stroke-width="1.5" marker-end="url(#arr-B04A3F)"></path>
-<rect x="114.9" y="803.0" width="62.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="814.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#B04A3F">{id}.html</text>
-<path d="M146.0,512.0 C146.0,841.4 146.0,914.6 146.0,1244.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
-<rect x="91.7" y="869.0" width="108.6" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="880.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">webbrowser.open()</text>
-<path d="M146.0,1304.0 C146.0,920.6 146.0,835.4 146.0,452.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"></path>
-<rect x="88.8" y="869.0" width="114.4" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="880.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">GET /artifact/{id}</text>
-<path d="M146.0,512.0 C146.0,782.0 146.0,842.0 146.0,1112.0" fill="none" stroke="#788C5D" stroke-width="1.5" marker-end="url(#arr-788C5D)"></path>
-<rect x="112.0" y="803.0" width="68.0" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="814.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D">serve HTML</text>
-<path d="M146.0,644.0 C146.0,438.8 146.0,393.2 146.0,188.0" fill="none" stroke="#D1CFC5" stroke-width="1.5" marker-end="url(#arr-D1CFC5)"></path>
-<rect x="74.3" y="407.0" width="143.4" height="14" rx="3" fill="rgba(250,249,245,0.92)"></rect>
-<text x="146.0" y="418.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5">tool schema Claude sees</text>
-<g class="sys-node" data-id="claude" data-kind="external" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="188.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="215.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">◇</text>
-<text x="83.0" y="212.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Claude (LLM)</text>
+<rect x="512.0" y="28.0" width="212.0" height="104.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"/>
+<text x="522.0" y="45.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Agent</text>
+<rect x="512.0" y="160.0" width="212.0" height="104.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"/>
+<text x="522.0" y="177.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">MCP Server</text>
+<rect x="394.0" y="292.0" width="802.0" height="236.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"/>
+<text x="404.0" y="309.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Rendering</text>
+<rect x="630.0" y="424.0" width="212.0" height="104.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"/>
+<text x="640.0" y="441.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Spec Language</text>
+<rect x="40.0" y="292.0" width="448.0" height="104.0" rx="12" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="5,3"/>
+<text x="50.0" y="309.0" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.9">Storage &amp; Output</text>
+<path d="M618.0,116.0 C618.0,148.4 618.0,155.6 618.0,188.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<rect x="586.9" y="143.0" width="62.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="618.0" y="154.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">MCP tools</text>
+<path d="M618.0,248.0 C618.0,280.4 1090.0,287.6 1090.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<rect x="779.4" y="275.0" width="149.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="854.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">build_tool_description()</text>
+<path d="M618.0,248.0 C618.0,280.4 618.0,287.6 618.0,320.0" fill="none" stroke="#788C5D" stroke-width="1.5" marker-end="url(#arr-788C5D)"/>
+<rect x="572.4" y="275.0" width="91.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="618.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D">EXAMPLES[name]</text>
+<path d="M618.0,248.0 C618.0,280.4 854.0,287.6 854.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<rect x="661.4" y="275.0" width="149.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="736.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_system_spec(data)</text>
+<path d="M854.0,380.0 C854.0,412.4 500.0,419.6 500.0,452.0" fill="none" stroke="#87867F" stroke-width="1.5" marker-end="url(#arr-87867F)"/>
+<rect x="631.4" y="407.0" width="91.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="677.0" y="418.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">page_wrapper()</text>
+<path d="M854.0,380.0 C854.0,412.4 736.0,419.6 736.0,452.0" fill="none" stroke="#87867F" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arr-87867F)"/>
+<rect x="734.9" y="407.0" width="120.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="795.0" y="418.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">validates &amp; renders</text>
+<path d="M618.0,380.0 C618.0,412.4 736.0,419.6 736.0,452.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<rect x="634.3" y="407.0" width="85.4" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="677.0" y="418.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">example specs</text>
+<path d="M1090.0,380.0 C1090.0,412.4 736.0,419.6 736.0,452.0" fill="none" stroke="#87867F" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arr-87867F)"/>
+<rect x="832.6" y="407.0" width="160.8" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="913.0" y="418.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">documents schema for agent</text>
+<path d="M618.0,248.0 C618.0,280.4 382.0,287.6 382.0,320.0" fill="none" stroke="#B04A3F" stroke-width="1.5" marker-end="url(#arr-B04A3F)"/>
+<rect x="448.6" y="275.0" width="102.8" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="500.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#B04A3F">html + spec.json</text>
+<path d="M618.0,248.0 C618.0,280.4 382.0,287.6 382.0,320.0" fill="none" stroke="#788C5D" stroke-width="1.5" marker-end="url(#arr-788C5D)"/>
+<rect x="468.9" y="275.0" width="62.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="500.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D">spec.json</text>
+<path d="M618.0,248.0 C618.0,280.4 146.0,287.6 146.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<rect x="327.7" y="275.0" width="108.6" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="382.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">webbrowser.open()</text>
+<g class="sys-node" data-id="agent" data-kind="external" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="528.0" y="56.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5" class="sys-nr"/>
+<text x="539.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">◇</text>
+<text x="555.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">AI Agent</text>
+<text x="555.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
 </g>
-<g class="sys-node" data-id="mcp_client" data-kind="service" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="320.0" width="180" height="60" rx="10" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757" opacity="0.75">◈</text>
-<text x="83.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">MCP Client</text>
-<text x="83.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
+<g class="sys-node" data-id="mcp_server" data-kind="service" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="528.0" y="188.0" width="180" height="60" rx="10" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5" class="sys-nr"/>
+<text x="539.0" y="215.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757" opacity="0.75">◈</text>
+<text x="555.0" y="212.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">MCP Server</text>
+<text x="555.0" y="228.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python · FastAPI · MCP</text>
 </g>
-<g class="sys-node" data-id="server" data-kind="service" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="452.0" width="180" height="60" rx="10" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="479.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757" opacity="0.75">◈</text>
-<text x="83.0" y="476.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">server.py</text>
-<text x="83.0" y="492.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python + FastAPI</text>
+<g class="sys-node" data-id="system_spec" data-kind="module" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="764.0" y="320.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"/>
+<text x="775.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="791.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">system_spec</text>
+<text x="791.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
 </g>
-<g class="sys-node" data-id="template_loader" data-kind="module" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="584.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="611.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
-<text x="83.0" y="608.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">template_loader.py</text>
-<text x="83.0" y="624.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<g class="sys-node" data-id="examples" data-kind="module" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="528.0" y="320.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"/>
+<text x="539.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="555.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">system_spec_examples</text>
+<text x="555.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
 </g>
-<g class="sys-node" data-id="examples" data-kind="module" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="716.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="743.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
-<text x="83.0" y="740.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">system_spec_examples.py</text>
-<text x="83.0" y="756.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<g class="sys-node" data-id="template_loader" data-kind="module" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="1000.0" y="320.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"/>
+<text x="1011.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="1027.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">template_loader</text>
+<text x="1027.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
 </g>
-<g class="sys-node" data-id="renderer" data-kind="module" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="848.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="875.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
-<text x="83.0" y="872.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">system_spec.py</text>
-<text x="83.0" y="888.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<g class="sys-node" data-id="design_system" data-kind="module" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="410.0" y="452.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"/>
+<text x="421.0" y="479.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="437.0" y="476.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">design_system</text>
+<text x="437.0" y="492.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
 </g>
-<g class="sys-node" data-id="design_system" data-kind="module" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="980.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="1007.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
-<text x="83.0" y="1004.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">design_system.py</text>
-<text x="83.0" y="1020.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<g class="sys-node" data-id="spec_format" data-kind="module" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="646.0" y="452.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5" class="sys-nr"/>
+<text x="657.0" y="479.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">□</text>
+<text x="673.0" y="476.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">system_spec Format</text>
+<text x="673.0" y="492.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">JSON</text>
 </g>
-<g class="sys-node" data-id="file_store" data-kind="db" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="1112.0" width="180" height="60" rx="10" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="1139.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D" opacity="0.75">⬡</text>
-<text x="83.0" y="1136.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">/tmp/artifact_ui</text>
-<text x="83.0" y="1152.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">filesystem</text>
+<g class="sys-node" data-id="storage" data-kind="db" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="292.0" y="320.0" width="180" height="60" rx="10" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5" class="sys-nr"/>
+<text x="303.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#788C5D" opacity="0.75">⬡</text>
+<text x="319.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Artifact Storage</text>
+<text x="319.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Filesystem</text>
 </g>
-<g class="sys-node" data-id="browser" data-kind="external" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="1244.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="1271.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">◇</text>
-<text x="83.0" y="1268.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Browser</text>
-</g>
-<g class="sys-node active" data-id="claude_md" data-kind="file" style="cursor:pointer" onclick="sysClick(this)">
-<rect x="56.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"></rect>
-<text x="67.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">≡</text>
-<text x="83.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">CLAUDE.md</text>
-<text x="83.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Markdown</text>
+<g class="sys-node" data-id="browser" data-kind="external" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="320.0" width="180" height="60" rx="10" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5" class="sys-nr"/>
+<text x="67.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F" opacity="0.75">◇</text>
+<text x="83.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Browser Tab</text>
 </g>
 </svg></div>
     </div>
     <div class="sys-sidebar">
-      <div id="sys-hint" class="sys-hint" style="display: none;">Click a node<br>to see details</div>
-      <div class="sys-panel" id="panel-claude" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">◇</span><span class="sys-plabel">Claude (LLM)</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></div><p class="sys-pdesc">The Claude instance (you). Reads CLAUDE.md instructions at session start, calls get_example to learn the spec schema, then calls render_artifact with a system_spec payload describing the target system.</p><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ MCP Client <span class="sys-ek">calls · tool call</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← CLAUDE.md <span class="sys-ek">owns · session instructions</span></div><div class="sys-er">← template_loader.py <span class="sys-ek">owns · tool schema Claude sees</span></div></div></div>
-<div class="sys-panel" id="panel-mcp_client" style="display: none;"><div class="sys-ph"><span style="color:#D97757;font-size:14px">◈</span><span class="sys-plabel">MCP Client</span><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></div><p class="sys-pdesc">The MCP client embedded in Claude Code. Maintains a stdio connection to server.py. Serializes tool calls as JSON-RPC and deserializes responses. Presents available tools to Claude at session start.</p><dl class="sys-meta"><dt>Tech</dt><dd>Claude Code</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ server.py <span class="sys-ek">calls · stdio JSON-RPC</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← Claude (LLM) <span class="sys-ek">calls · tool call</span></div></div></div>
-<div class="sys-panel" id="panel-server" style="display: none;"><div class="sys-ph"><span style="color:#D97757;font-size:14px">◈</span><span class="sys-plabel">server.py</span><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></div><p class="sys-pdesc">The heart of the tool. Runs two concurrent servers: (1) an MCP stdio server that receives tool calls from Claude Code, and (2) a FastAPI HTTP server on port 8765 that serves rendered HTML files to the browser. Handles get_example and render_artifact tools.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python + FastAPI</dd></dl><div class="sys-tags"><span class="sys-tag">critical</span></div><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ template_loader.py <span class="sys-ek">imports · build description</span></div><div class="sys-er">→ system_spec_examples.py <span class="sys-ek">reads · get_example</span></div><div class="sys-er">→ system_spec.py <span class="sys-ek">calls · render_system_spec()</span></div><div class="sys-er">→ /tmp/artifact_ui <span class="sys-ek">writes · {id}.html</span></div><div class="sys-er">→ Browser <span class="sys-ek">calls · webbrowser.open()</span></div><div class="sys-er">→ /tmp/artifact_ui <span class="sys-ek">reads · serve HTML</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← MCP Client <span class="sys-ek">calls · stdio JSON-RPC</span></div><div class="sys-er">← Browser <span class="sys-ek">calls · GET /artifact/{id}</span></div></div></div>
-<div class="sys-panel" id="panel-template_loader" style="display: none;"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">template_loader.py</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">Builds the render_artifact tool description that Claude sees. This is what tells Claude about the spec schema, node/edge/group kinds, and how to invoke the tool. Keeping it accurate and concise is key to good agent behavior.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ Claude (LLM) <span class="sys-ek">owns · tool schema Claude sees</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">imports · build description</span></div></div></div>
-<div class="sys-panel" id="panel-examples" style="display: none;"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">system_spec_examples.py</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">Three reference specs: sys_microservices (e-commerce platform), sys_event_driven (IoT pipeline), sys_monolith (Rails app). Claude calls get_example to read one of these before building a spec, ensuring it understands the correct schema shape.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">reads · get_example</span></div></div></div>
-<div class="sys-panel" id="panel-renderer" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">system_spec.py</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">The renderer. Takes a validated spec dict and produces a complete HTML page with five views: Architecture (SVG box-and-arrow), Layers (swim-lanes), Sequences (swim-lane diagrams), Matrix (adjacency table), Components (filterable table). Layout uses Kahn's longest-path algorithm for topological ordering.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd></dl><div class="sys-tags"><span class="sys-tag">critical</span></div><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ design_system.py <span class="sys-ek">imports</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">calls · render_system_spec()</span></div></div></div>
-<div class="sys-panel" id="panel-design_system" style="display: none;"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">design_system.py</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">CSS design tokens and shared HTML utilities. Ivory/slate/clay/olive/rust palette, serif headings. Imported by system_spec.py for consistent visual style.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← system_spec.py <span class="sys-ek">imports</span></div></div></div>
-<div class="sys-panel" id="panel-file_store" style="display:none"><div class="sys-ph"><span style="color:#788C5D;font-size:14px">⬡</span><span class="sys-plabel">/tmp/artifact_ui</span><span class="sys-kbadge" style="color:#788C5D;border-color:#788C5D">db</span></div><p class="sys-pdesc">Temporary directory where rendered HTML files are written. Each artifact is a single self-contained HTML file named {artifact_id}.html. Also stores server.pid so the running server process can be tracked.</p><dl class="sys-meta"><dt>Tech</dt><dd>filesystem</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">writes · {id}.html</span></div><div class="sys-er">← server.py <span class="sys-ek">reads · serve HTML</span></div></div></div>
-<div class="sys-panel" id="panel-browser" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">◇</span><span class="sys-plabel">Browser</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></div><p class="sys-pdesc">The user's browser. Opened automatically via webbrowser.open() when render_artifact is called. Fetches the artifact HTML from the FastAPI server and renders the interactive diagram. The Save button downloads the current page as a standalone HTML file.</p><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ server.py <span class="sys-ek">calls · GET /artifact/{id}</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← server.py <span class="sys-ek">calls · webbrowser.open()</span></div></div></div>
-<div class="sys-panel" id="panel-claude_md" style="display: block;"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">≡</span><span class="sys-plabel">CLAUDE.md</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">file</span></div><p class="sys-pdesc">Two files: ~/.claude/CLAUDE.md (global) and artifact-ui/CLAUDE.md (project). Loaded into Claude's context at session start. Tell Claude to always call get_example first, always use template='system_spec', prefer render_artifact over AskUserQuestion for decisions.</p><dl class="sys-meta"><dt>Tech</dt><dd>Markdown</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ Claude (LLM) <span class="sys-ek">owns · session instructions</span></div></div></div>
-      <div class="sys-legend"><div class="sys-leg-group"><div class="sys-leg-title">Nodes</div><div class="sys-leg-row"><span style="color:#788C5D">⬡</span><span>db</span></div><div class="sys-leg-row"><span style="color:#87867F">◇</span><span>external</span></div><div class="sys-leg-row"><span style="color:#D1CFC5">≡</span><span>file</span></div><div class="sys-leg-row"><span style="color:#87867F">□</span><span>module</span></div><div class="sys-leg-row"><span style="color:#D97757">◈</span><span>service</span></div></div><div class="sys-leg-group"><div class="sys-leg-title">Edges</div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D97757;"></span><span>calls</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#87867F;"></span><span>imports</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D1CFC5;"></span><span>owns</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#788C5D;"></span><span>reads</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#B04A3F;"></span><span>writes</span></div></div></div>
+      <div id="sys-hint" class="sys-hint">Click a node<br>to see details</div>
+      <div class="sys-panel" id="panel-agent" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">◇</span><span class="sys-plabel">AI Agent</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></div><p class="sys-pdesc">Claude (or another MCP client) calling the artifact-ui tools to explain code, plans, or architecture.</p><dl class="sys-meta"><dt>Tech</dt><dd>Claude Code</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ MCP Server <span class="sys-ek">calls · MCP tools</span></div></div></div>
+<div class="sys-panel" id="panel-mcp_server" style="display:none"><div class="sys-ph"><span style="color:#D97757;font-size:14px">◈</span><span class="sys-plabel">MCP Server</span><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></div><p class="sys-pdesc">stdio JSON-RPC MCP server + a FastAPI app on :8765, sharing one asyncio event loop. Exposes get_example, render_artifact, save_artifact, get_artifact_spec.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python · FastAPI · MCP</dd><dt>Location</dt><dd>server.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ template_loader <span class="sys-ek">calls · build_tool_description()</span></div><div class="sys-er">→ system_spec_examples <span class="sys-ek">reads · EXAMPLES[name]</span></div><div class="sys-er">→ system_spec <span class="sys-ek">calls · render_system_spec(data)</span></div><div class="sys-er">→ Artifact Storage <span class="sys-ek">writes · html + spec.json</span></div><div class="sys-er">→ Artifact Storage <span class="sys-ek">reads · spec.json</span></div><div class="sys-er">→ Browser Tab <span class="sys-ek">calls · webbrowser.open()</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← AI Agent <span class="sys-ek">calls · MCP tools</span></div></div></div>
+<div class="sys-panel" id="panel-system_spec" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">system_spec</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">Core renderer: validates specs, lays out the architecture diagram (Kahn&#x27;s longest-path layout), and renders all six views.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ design_system <span class="sys-ek">imports · page_wrapper()</span></div><div class="sys-er">→ system_spec Format <span class="sys-ek">depends · validates &amp; renders</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← MCP Server <span class="sys-ek">calls · render_system_spec(data)</span></div></div></div>
+<div class="sys-panel" id="panel-examples" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">system_spec_examples</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">Library of example specs (sys_microservices, sys_event_driven, sys_monolith, code_impl_plan, code_bug_fix, mixed_levels) returned by get_example.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec_examples.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ system_spec Format <span class="sys-ek">instantiates · example specs</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← MCP Server <span class="sys-ek">reads · EXAMPLES[name]</span></div></div></div>
+<div class="sys-panel" id="panel-template_loader" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">template_loader</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">Builds the render_artifact tool description (use cases, schema, vocab) shown to the agent.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>template_loader.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ system_spec Format <span class="sys-ek">depends · documents schema for agent</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← MCP Server <span class="sys-ek">calls · build_tool_description()</span></div></div></div>
+<div class="sys-panel" id="panel-design_system" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">design_system</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">Shared HTML page shell, CSS tokens, and the page_wrapper() used by every rendered artifact.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>design_system.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← system_spec <span class="sys-ek">imports · page_wrapper()</span></div></div></div>
+<div class="sys-panel" id="panel-spec_format" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">□</span><span class="sys-plabel">system_spec Format</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></div><p class="sys-pdesc">The JSON schema an agent writes as the &#x27;data&#x27; argument to render_artifact: nodes, edges, groups (optionally with a nested &#x27;detail&#x27; for the Code Detail tab), and sequences.</p><dl class="sys-meta"><dt>Tech</dt><dd>JSON</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← system_spec <span class="sys-ek">depends · validates &amp; renders</span></div><div class="sys-er">← system_spec_examples <span class="sys-ek">instantiates · example specs</span></div><div class="sys-er">← template_loader <span class="sys-ek">depends · documents schema for agent</span></div></div></div>
+<div class="sys-panel" id="panel-storage" style="display:none"><div class="sys-ph"><span style="color:#788C5D;font-size:14px">⬡</span><span class="sys-plabel">Artifact Storage</span><span class="sys-kbadge" style="color:#788C5D;border-color:#788C5D">db</span></div><p class="sys-pdesc">Ephemeral previews under /tmp/artifact_ui/{id}/{id}.html + {id}.spec.json, plus optional persistent paths (e.g. this index.html + index.spec.json) written when &#x27;path&#x27; is given to render_artifact.</p><dl class="sys-meta"><dt>Tech</dt><dd>Filesystem</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← MCP Server <span class="sys-ek">writes · html + spec.json</span></div><div class="sys-er">← MCP Server <span class="sys-ek">reads · spec.json</span></div></div></div>
+<div class="sys-panel" id="panel-browser" style="display:none"><div class="sys-ph"><span style="color:#87867F;font-size:14px">◇</span><span class="sys-plabel">Browser Tab</span><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></div><p class="sys-pdesc">Opened via webbrowser.open() to preview the rendered artifact, with an injected Save button for ephemeral artifacts.</p><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← MCP Server <span class="sys-ek">calls · webbrowser.open()</span></div></div></div>
+      <div class="sys-legend"><div class="sys-leg-group"><div class="sys-leg-title">Nodes</div><div class="sys-leg-row"><span style="color:#788C5D">⬡</span><span>db</span></div><div class="sys-leg-row"><span style="color:#87867F">◇</span><span>external</span></div><div class="sys-leg-row"><span style="color:#87867F">□</span><span>module</span></div><div class="sys-leg-row"><span style="color:#D97757">◈</span><span>service</span></div></div><div class="sys-leg-group"><div class="sys-leg-title">Edges</div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D97757;"></span><span>calls</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#87867F;border-top-style:dashed"></span><span>depends</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#87867F;"></span><span>imports</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D97757;"></span><span>instantiates</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#788C5D;"></span><span>reads</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#B04A3F;"></span><span>writes</span></div></div></div>
     </div>
   </div>
 </div>
 
-<div id="view-layers" class="sys-view" style="display: none;">
-  <div class="sys-layer-wrap"><svg viewBox="0 0 676 390" style="display:block;width:100%;height:auto;max-height:700px" id="sys-layer-svg">
+<div id="view-layers" class="sys-view" style="display:none">
+  <div class="sys-layer-wrap"><svg viewBox="0 0 856 484" style="display:block;width:100%;height:auto;max-height:700px" id="sys-layer-svg">
 <defs>
-<marker id="larr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"></path></marker>
+<marker id="larr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"/></marker>
 </defs>
-<rect x="0" y="14.0" width="676" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"></rect>
-<line x1="108" y1="14.0" x2="108" y2="94.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"></line>
+<rect x="0" y="14.0" width="856" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"/>
+<line x1="108" y1="14.0" x2="108" y2="94.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"/>
 <text x="54.0" y="54.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Agent</text>
-<rect x="0" y="108.0" width="676" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"></rect>
-<line x1="108" y1="108.0" x2="108" y2="188.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"></line>
-<text x="54.0" y="148.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Server</text>
-<rect x="0" y="202.0" width="676" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"></rect>
-<line x1="108" y1="202.0" x2="108" y2="282.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"></line>
+<rect x="0" y="108.0" width="856" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"/>
+<line x1="108" y1="108.0" x2="108" y2="188.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"/>
+<text x="54.0" y="148.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">MCP Server</text>
+<rect x="0" y="202.0" width="856" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"/>
+<line x1="108" y1="202.0" x2="108" y2="282.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"/>
 <text x="54.0" y="242.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Rendering</text>
-<rect x="0" y="296.0" width="676" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"></rect>
-<line x1="108" y1="296.0" x2="108" y2="376.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"></line>
-<text x="54.0" y="336.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Delivery</text>
-<path d="M212.0,28.0 Q302.0,12.0 392.0,28.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
-<path d="M392.0,28.0 Q482.0,12.0 572.0,28.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
-<path d="M572.0,80.0 C572.0,96.8 212.0,105.2 212.0,122.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
-<rect x="350.2" y="93.0" width="83.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
-<text x="392.0" y="103.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">stdio JSON-RPC</text>
-<path d="M212.0,122.0 Q302.0,106.0 392.0,122.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
-<path d="M212.0,122.0 Q392.0,106.0 572.0,122.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
-<path d="M212.0,174.0 C212.0,190.8 302.0,199.2 302.0,216.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
-<rect x="199.0" y="187.0" width="116.0" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
-<text x="257.0" y="197.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">render_system_spec()</text>
-<path d="M302.0,216.0 Q392.0,200.0 482.0,216.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"></path>
-<path d="M212.0,174.0 C212.0,228.4 302.0,255.6 302.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
-<rect x="228.7" y="234.0" width="56.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
-<text x="257.0" y="244.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">{id}.html</text>
-<path d="M212.0,174.0 C212.0,228.4 482.0,255.6 482.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
-<rect x="297.1" y="234.0" width="99.8" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
-<text x="347.0" y="244.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">webbrowser.open()</text>
-<path d="M482.0,362.0 C482.0,266.0 212.0,218.0 212.0,122.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
-<rect x="294.4" y="234.0" width="105.2" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
-<text x="347.0" y="244.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">GET /artifact/{id}</text>
-<path d="M212.0,174.0 C212.0,228.4 302.0,255.6 302.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
-<rect x="226.0" y="234.0" width="62.0" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
-<text x="257.0" y="244.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">serve HTML</text>
-<path d="M392.0,174.0 C392.0,115.6 392.0,86.4 392.0,28.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"></path>
-<rect x="325.9" y="93.0" width="132.2" height="13" rx="3" fill="rgba(250,249,245,0.9)"></rect>
-<text x="392.0" y="103.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">tool schema Claude sees</text>
-<rect x="132.0" y="28.0" width="160" height="52" rx="8" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5"></rect>
-<text x="212.0" y="48.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">≡ CLAUDE.md</text>
-<text x="212.0" y="64.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Markdown</text>
-<rect x="312.0" y="28.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="392.0" y="54.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Claude (LLM)</text>
-<rect x="492.0" y="28.0" width="160" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
-<text x="572.0" y="48.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Client</text>
-<text x="572.0" y="64.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
-<rect x="132.0" y="122.0" width="160" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
-<text x="212.0" y="142.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ server.py</text>
-<text x="212.0" y="158.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python + FastAPI</text>
-<rect x="312.0" y="122.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="392.0" y="142.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ template_loader.py</text>
-<text x="392.0" y="158.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
-<rect x="492.0" y="122.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="572.0" y="142.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec_examples.py</text>
-<text x="572.0" y="158.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
-<rect x="222.0" y="216.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="302.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec.py</text>
-<text x="302.0" y="252.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
-<rect x="402.0" y="216.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="482.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ design_system.py</text>
-<text x="482.0" y="252.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
-<rect x="222.0" y="310.0" width="160" height="52" rx="8" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5"></rect>
-<text x="302.0" y="330.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">⬡ /tmp/artifact_ui</text>
-<text x="302.0" y="346.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">filesystem</text>
-<rect x="402.0" y="310.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="482.0" y="336.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Browser</text>
+<rect x="0" y="296.0" width="856" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"/>
+<line x1="108" y1="296.0" x2="108" y2="376.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"/>
+<text x="54.0" y="336.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Spec Language</text>
+<rect x="0" y="390.0" width="856" height="80" rx="8" fill="rgba(209,207,197,0.08)" stroke="#D1CFC5" stroke-width="1"/>
+<line x1="108" y1="390.0" x2="108" y2="470.0" stroke="#D1CFC5" stroke-width="0.5" opacity="0.35"/>
+<text x="54.0" y="430.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="11" fill="#D1CFC5" font-weight="500">Storage &amp; Output</text>
+<path d="M482.0,80.0 C482.0,96.8 482.0,105.2 482.0,122.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="453.7" y="93.0" width="56.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="482.0" y="103.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">MCP tools</text>
+<path d="M482.0,174.0 C482.0,190.8 572.0,199.2 572.0,216.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="458.2" y="187.0" width="137.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="527.0" y="197.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">build_tool_description()</text>
+<path d="M482.0,174.0 C482.0,190.8 392.0,199.2 392.0,216.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="395.2" y="187.0" width="83.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="437.0" y="197.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">EXAMPLES[name]</text>
+<path d="M482.0,174.0 C482.0,190.8 212.0,199.2 212.0,216.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="278.2" y="187.0" width="137.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="347.0" y="197.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">render_system_spec(data)</text>
+<path d="M212.0,216.0 Q482.0,200.0 752.0,216.0" fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#larr)"/>
+<path d="M212.0,268.0 C212.0,284.8 482.0,293.2 482.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="291.7" y="281.0" width="110.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="347.0" y="291.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">validates &amp; renders</text>
+<path d="M392.0,268.0 C392.0,284.8 482.0,293.2 482.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="397.9" y="281.0" width="78.2" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="437.0" y="291.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">example specs</text>
+<path d="M572.0,268.0 C572.0,284.8 482.0,293.2 482.0,310.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="452.8" y="281.0" width="148.4" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="527.0" y="291.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">documents schema for agent</text>
+<path d="M482.0,174.0 C482.0,266.0 392.0,312.0 392.0,404.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="389.8" y="281.0" width="94.4" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="437.0" y="291.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">html + spec.json</text>
+<path d="M482.0,174.0 C482.0,266.0 392.0,312.0 392.0,404.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="408.7" y="281.0" width="56.6" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="437.0" y="291.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">spec.json</text>
+<path d="M482.0,174.0 C482.0,266.0 572.0,312.0 572.0,404.0" fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>
+<rect x="477.1" y="281.0" width="99.8" height="13" rx="3" fill="rgba(250,249,245,0.9)"/>
+<text x="527.0" y="291.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#87867F">webbrowser.open()</text>
+<rect x="402.0" y="28.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"/>
+<text x="482.0" y="48.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ AI Agent</text>
+<text x="482.0" y="64.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
+<rect x="402.0" y="122.0" width="160" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"/>
+<text x="482.0" y="142.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Server</text>
+<text x="482.0" y="158.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python · FastAPI · MCP</text>
+<rect x="132.0" y="216.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"/>
+<text x="212.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec</text>
+<text x="212.0" y="252.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<rect x="312.0" y="216.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"/>
+<text x="392.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec_examples</text>
+<text x="392.0" y="252.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<rect x="492.0" y="216.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"/>
+<text x="572.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ template_loader</text>
+<text x="572.0" y="252.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<rect x="672.0" y="216.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"/>
+<text x="752.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ design_system</text>
+<text x="752.0" y="252.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<rect x="402.0" y="310.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"/>
+<text x="482.0" y="330.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec Format</text>
+<text x="482.0" y="346.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">JSON</text>
+<rect x="312.0" y="404.0" width="160" height="52" rx="8" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5"/>
+<text x="392.0" y="424.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">⬡ Artifact Storage</text>
+<text x="392.0" y="440.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Filesystem</text>
+<rect x="492.0" y="404.0" width="160" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"/>
+<text x="572.0" y="430.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Browser Tab</text>
 </svg></div>
 </div>
 
-<div id="view-sequences" class="sys-view" style="display: none;">
-  <div class="sys-seq-wrap"><div class="sys-seq-controls"><span class="sys-fl">Sequence</span><select class="sys-seq-sel" onchange="sysSeqChange(this)"><option value="get-example">get_example call</option><option value="render-artifact">render_artifact call</option></select></div><div class="sys-seq-diagrams"><div id="seqp-get-example" class="sys-seq-panel" style="display: none;"><svg viewBox="0 0 808 424" style="display:block;width:100%;height:auto;max-height:720px">
-<rect x="40.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="110.0" y="46.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Claude (LLM)</text>
-<line x1="110.0" y1="72" x2="110.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="236.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
-<text x="306.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Client</text>
-<text x="306.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
-<line x1="306.0" y1="72" x2="306.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="432.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
-<text x="502.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ server.py</text>
-<text x="502.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python + FastAPI</text>
-<line x1="502.0" y1="72" x2="502.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="628.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="698.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec_examples.py</text>
-<text x="698.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
-<line x1="698.0" y1="72" x2="698.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<line x1="110.0" y1="104.0" x2="299.0" y2="104.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="306.0,104.0 299.0,100.0 299.0,108.0" fill="#D97757"></polygon>
-<text x="208.0" y="97.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">get_example('sys_microservices')</text>
+<div id="view-sequences" class="sys-view" style="display:none">
+  <div class="sys-seq-wrap"><div class="sys-seq-controls"><span class="sys-fl">Sequence</span><select class="sys-seq-sel" onchange="sysSeqChange(this)"><option value="render_persist">Render + persist an artifact (this page)</option><option value="iterate">Iterate on a persistent artifact later</option></select></div><div class="sys-seq-diagrams"><div id="seqp-render_persist" class="sys-seq-panel" ><svg viewBox="0 0 1004 424" style="display:block;width:100%;height:auto;max-height:720px">
+<rect x="40.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"/>
+<text x="110.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ AI Agent</text>
+<text x="110.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
+<line x1="110.0" y1="72" x2="110.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>
+<rect x="236.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"/>
+<text x="306.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Server</text>
+<text x="306.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python · FastAPI · MCP</text>
+<line x1="306.0" y1="72" x2="306.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>
+<rect x="432.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"/>
+<text x="502.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec</text>
+<text x="502.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+<line x1="502.0" y1="72" x2="502.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>
+<rect x="628.0" y="20" width="140" height="52" rx="8" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5"/>
+<text x="698.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">⬡ Artifact Storage</text>
+<text x="698.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Filesystem</text>
+<line x1="698.0" y1="72" x2="698.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>
+<rect x="824.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"/>
+<text x="894.0" y="46.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Browser Tab</text>
+<line x1="894.0" y1="72" x2="894.0" y2="408" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="110.0" y1="104.0" x2="299.0" y2="104.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="306.0,104.0 299.0,100.0 299.0,108.0" fill="#D97757"/>
+<text x="208.0" y="97.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_artifact(path=&#x27;index.html&#x27;, data=spec)</text>
 <text x="32.0" y="108.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">1</text>
-<line x1="306.0" y1="168.0" x2="495.0" y2="168.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="502.0,168.0 495.0,164.0 495.0,172.0" fill="#D97757"></polygon>
-<text x="404.0" y="161.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">JSON-RPC call_tool</text>
+<line x1="306.0" y1="168.0" x2="495.0" y2="168.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="502.0,168.0 495.0,164.0 495.0,172.0" fill="#D97757"/>
+<text x="404.0" y="161.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_system_spec(data)</text>
 <text x="32.0" y="172.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">2</text>
-<line x1="502.0" y1="232.0" x2="691.0" y2="232.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="698.0,232.0 691.0,228.0 691.0,236.0" fill="#D97757"></polygon>
-<text x="600.0" y="225.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">EXAMPLES['sys_microservices']</text>
+<line x1="306.0" y1="232.0" x2="691.0" y2="232.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="698.0,232.0 691.0,228.0 691.0,236.0" fill="#D97757"/>
+<text x="502.0" y="225.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">write /tmp/{id}/{id}.html + .spec.json</text>
 <text x="32.0" y="236.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">3</text>
-<line x1="502.0" y1="296.0" x2="313.0" y2="296.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="306.0,296.0 313.0,292.0 313.0,300.0" fill="#D97757"></polygon>
-<text x="404.0" y="289.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">JSON spec (indent=2)</text>
+<line x1="306.0" y1="296.0" x2="691.0" y2="296.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="698.0,296.0 691.0,292.0 691.0,300.0" fill="#D97757"/>
+<text x="502.0" y="289.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">write index.html + index.spec.json</text>
 <text x="32.0" y="300.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">4</text>
-<line x1="306.0" y1="360.0" x2="117.0" y2="360.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="110.0,360.0 117.0,356.0 117.0,364.0" fill="#D97757"></polygon>
-<text x="208.0" y="353.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">spec in context window</text>
+<line x1="306.0" y1="360.0" x2="887.0" y2="360.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="894.0,360.0 887.0,356.0 887.0,364.0" fill="#D97757"/>
+<text x="600.0" y="353.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">open /tmp preview</text>
 <text x="32.0" y="364.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">5</text>
-</svg></div><div id="seqp-render-artifact" class="sys-seq-panel" style=""><svg viewBox="0 0 1396 808" style="display:block;width:100%;height:auto;max-height:720px">
-<rect x="40.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="110.0" y="46.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Claude (LLM)</text>
-<line x1="110.0" y1="72" x2="110.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="236.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
-<text x="306.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Client</text>
-<text x="306.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
-<line x1="306.0" y1="72" x2="306.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="432.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"></rect>
-<text x="502.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ server.py</text>
-<text x="502.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python + FastAPI</text>
-<line x1="502.0" y1="72" x2="502.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="628.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="698.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ system_spec.py</text>
-<text x="698.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
-<line x1="698.0" y1="72" x2="698.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="824.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.05)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="894.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">□ design_system.py</text>
-<text x="894.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
-<line x1="894.0" y1="72" x2="894.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="1020.0" y="20" width="140" height="52" rx="8" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5"></rect>
-<text x="1090.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">⬡ /tmp/artifact_ui</text>
-<text x="1090.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">filesystem</text>
-<line x1="1090.0" y1="72" x2="1090.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<rect x="1216.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"></rect>
-<text x="1286.0" y="46.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ Browser</text>
-<line x1="1286.0" y1="72" x2="1286.0" y2="792" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"></line>
-<line x1="110.0" y1="104.0" x2="299.0" y2="104.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="306.0,104.0 299.0,100.0 299.0,108.0" fill="#D97757"></polygon>
-<text x="208.0" y="97.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_artifact(template='system_spec', data={...})</text>
+</svg></div><div id="seqp-iterate" class="sys-seq-panel" style="display:none"><svg viewBox="0 0 612 360" style="display:block;width:100%;height:auto;max-height:720px">
+<rect x="40.0" y="20" width="140" height="52" rx="8" fill="rgba(135,134,127,0.07)" stroke="#87867F" stroke-width="1.5"/>
+<text x="110.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◇ AI Agent</text>
+<text x="110.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Claude Code</text>
+<line x1="110.0" y1="72" x2="110.0" y2="344" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>
+<rect x="236.0" y="20" width="140" height="52" rx="8" fill="rgba(217,119,87,0.07)" stroke="#D97757" stroke-width="1.5"/>
+<text x="306.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">◈ MCP Server</text>
+<text x="306.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python · FastAPI · MCP</text>
+<line x1="306.0" y1="72" x2="306.0" y2="344" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>
+<rect x="432.0" y="20" width="140" height="52" rx="8" fill="rgba(120,140,93,0.07)" stroke="#788C5D" stroke-width="1.5"/>
+<text x="502.0" y="40.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">⬡ Artifact Storage</text>
+<text x="502.0" y="56.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Filesystem</text>
+<line x1="502.0" y1="72" x2="502.0" y2="344" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="110.0" y1="104.0" x2="299.0" y2="104.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="306.0,104.0 299.0,100.0 299.0,108.0" fill="#D97757"/>
+<text x="208.0" y="97.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">get_artifact_spec(&#x27;index.html&#x27;)</text>
 <text x="32.0" y="108.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">1</text>
-<line x1="306.0" y1="168.0" x2="495.0" y2="168.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="502.0,168.0 495.0,164.0 495.0,172.0" fill="#D97757"></polygon>
-<text x="404.0" y="161.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">JSON-RPC call_tool</text>
+<line x1="306.0" y1="168.0" x2="495.0" y2="168.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="502.0,168.0 495.0,164.0 495.0,172.0" fill="#D97757"/>
+<text x="404.0" y="161.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">read index.spec.json</text>
 <text x="32.0" y="172.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">2</text>
-<line x1="502.0" y1="232.0" x2="691.0" y2="232.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="698.0,232.0 691.0,228.0 691.0,236.0" fill="#D97757"></polygon>
-<text x="600.0" y="225.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_system_spec(data)</text>
+<line x1="110.0" y1="232.0" x2="299.0" y2="232.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="306.0,232.0 299.0,228.0 299.0,236.0" fill="#D97757"/>
+<text x="208.0" y="225.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">render_artifact(path=&#x27;index.html&#x27;, data=&lt;edited spec&gt;)</text>
 <text x="32.0" y="236.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">3</text>
-<line x1="698.0" y1="296.0" x2="887.0" y2="296.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="894.0,296.0 887.0,292.0 887.0,300.0" fill="#D97757"></polygon>
-<text x="796.0" y="289.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">import CSS tokens</text>
+<line x1="306.0" y1="296.0" x2="495.0" y2="296.0" stroke="#D97757" stroke-width="1.5"/>
+<polygon points="502.0,296.0 495.0,292.0 495.0,300.0" fill="#D97757"/>
+<text x="404.0" y="289.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">overwrite index.html + index.spec.json</text>
 <text x="32.0" y="300.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">4</text>
-<line x1="698.0" y1="360.0" x2="509.0" y2="360.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="502.0,360.0 509.0,356.0 509.0,364.0" fill="#D97757"></polygon>
-<text x="600.0" y="353.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">full HTML string</text>
-<text x="32.0" y="364.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">5</text>
-<line x1="502.0" y1="424.0" x2="1083.0" y2="424.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="1090.0,424.0 1083.0,420.0 1083.0,428.0" fill="#D97757"></polygon>
-<text x="796.0" y="417.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">write {id}.html</text>
-<text x="32.0" y="428.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">6</text>
-<line x1="502.0" y1="488.0" x2="1279.0" y2="488.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="1286.0,488.0 1279.0,484.0 1279.0,492.0" fill="#D97757"></polygon>
-<text x="894.0" y="481.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">webbrowser.open()</text>
-<text x="32.0" y="492.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">7</text>
-<line x1="1286.0" y1="552.0" x2="509.0" y2="552.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="502.0,552.0 509.0,548.0 509.0,556.0" fill="#D97757"></polygon>
-<text x="894.0" y="545.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">GET /artifact/{id}</text>
-<text x="32.0" y="556.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">8</text>
-<line x1="502.0" y1="616.0" x2="1279.0" y2="616.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="1286.0,616.0 1279.0,612.0 1279.0,620.0" fill="#D97757"></polygon>
-<text x="894.0" y="609.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">HTML response</text>
-<text x="32.0" y="620.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">9</text>
-<line x1="502.0" y1="680.0" x2="313.0" y2="680.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="306.0,680.0 313.0,676.0 313.0,684.0" fill="#D97757"></polygon>
-<text x="404.0" y="673.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">{status: rendered}</text>
-<text x="32.0" y="684.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">10</text>
-<line x1="306.0" y1="744.0" x2="117.0" y2="744.0" stroke="#D97757" stroke-width="1.5"></line>
-<polygon points="110.0,744.0 117.0,740.0 117.0,748.0" fill="#D97757"></polygon>
-<text x="208.0" y="737.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">tool result</text>
-<text x="32.0" y="748.0" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">11</text>
 </svg></div></div></div>
 </div>
 
-<div id="view-matrix" class="sys-view" style="display: none;">
-  <div class="sys-matrix-wrap"><table class="sys-mtx"><thead><tr><th class="sys-mh0"></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">◇</span><span>Claude (LLM)</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#D97757">◈</span><span>MCP Client</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#D97757">◈</span><span>server.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>template_loader.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>system_spec_examples.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>system_spec.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>design_system.py</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#788C5D">⬡</span><span>/tmp/artifact_ui</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">◇</span><span>Browser</span></div></th></tr></thead><tbody><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">◇</span>Claude (LLM)</td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="claude → mcp_client">calls</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#D97757;margin-right:4px">◈</span>MCP Client</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="mcp_client → server">calls</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#D97757;margin-right:4px">◈</span>server.py</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#87867F;background:rgba(135,134,127,0.07)" title="server → template_loader">imports</td><td class="sys-mc sys-mc-hit" style="color:#788C5D;background:rgba(120,140,93,0.07)" title="server → examples">reads</td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="server → renderer">calls</td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#B04A3F;background:rgba(176,74,63,0.07)" title="server → file_store">writes · reads</td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="server → browser">calls</td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">□</span>template_loader.py</td><td class="sys-mc sys-mc-hit" style="color:#D1CFC5;background:rgba(209,207,197,0.07)" title="template_loader → claude">owns</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">□</span>system_spec.py</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#87867F;background:rgba(135,134,127,0.07)" title="renderer → design_system">imports</td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">◇</span>Browser</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="browser → server">calls</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#D1CFC5;margin-right:4px">≡</span>CLAUDE.md</td><td class="sys-mc sys-mc-hit" style="color:#D1CFC5;background:rgba(209,207,197,0.07)" title="claude_md → claude">owns</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr></tbody></table></div>
+<div id="view-codedetail" class="sys-view" style="display:none">
+  <div class="sys-cd-wrap"><div class="sys-cd-controls"><span class="sys-fl">Module</span><select class="sys-cd-sel" onchange="sysCodeDetailChange(this)"><option value="mcp_layer">MCP Server</option><option value="render_layer">Rendering</option><option value="spec_layer">Spec Language</option></select></div><div id="cdp-mcp_layer" class="sys-cd-panel"><div class="sys-wrap"><div class="sys-main"><div class="sys-diagram"><svg viewBox="0 0 1000 304" style="display:block;width:100%;height:auto;max-height:680px" id="cd-mcp_layer-sys-svg">
+<defs>
+<marker id="arr-C8C5BC" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"/></marker>
+<marker id="arr-D97757" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D97757"/></marker>
+</defs>
+<path d="M382.0,116.0 C382.0,148.4 500.0,155.6 500.0,188.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M618.0,116.0 C618.0,148.4 500.0,155.6 500.0,188.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M146.0,116.0 C146.0,148.4 500.0,155.6 500.0,188.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<g class="sys-node" data-id="cd-mcp_layer-render_artifact_handler" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="292.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="303.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="319.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">render_artifact handler</text>
+<text x="319.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-mcp_layer-spec_path_for" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="410.0" y="188.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="421.0" y="215.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="437.0" y="212.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">spec_path_for()</text>
+<text x="437.0" y="228.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-mcp_layer-save_artifact_tool" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="528.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="539.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="555.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">save_artifact()</text>
+<text x="555.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-mcp_layer-get_artifact_spec_tool" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="67.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="83.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">get_artifact_spec()</text>
+<text x="83.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-mcp_layer-serve_artifact" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="764.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="775.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="791.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">serve_artifact()</text>
+<text x="791.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+</svg></div></div><div class="sys-sidebar"><div class="sys-hint">Click a node<br>to see details</div><div class="sys-panel" id="panel-cd-mcp_layer-render_artifact_handler" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">render_artifact handler</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">The render_artifact branch of call_tool(). Writes the spec alongside the HTML for the ephemeral /tmp artifact, and additionally writes both to an optional persistent &#x27;path&#x27; (no Save-button JS injected there).</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>server.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ spec_path_for() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>async def call_tool(name, arguments) -&gt; list[TextContent]  # &#x27;render_artifact&#x27; branch</code></div><div class="sys-snippet"><pre><code class="language-python">rendered_html = renderer(data)
+html = inject_runtime(rendered_html, artifact_id)
+artifact_dir = ARTIFACT_DIR / artifact_id
+artifact_dir.mkdir(parents=True, exist_ok=True)
+(artifact_dir / f&quot;{artifact_id}.html&quot;).write_text(html, encoding=&quot;utf-8&quot;)
+(artifact_dir / f&quot;{artifact_id}.spec.json&quot;).write_text(json.dumps(data, indent=2), encoding=&quot;utf-8&quot;)
+
+persist_path = arguments.get(&quot;path&quot;)
+if persist_path:
+    dest = Path(persist_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(rendered_html, encoding=&quot;utf-8&quot;)
+    spec_path_for(dest).write_text(json.dumps(data, indent=2), encoding=&quot;utf-8&quot;)</code></pre></div></div>
+<div class="sys-panel" id="panel-cd-mcp_layer-spec_path_for" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">spec_path_for()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">Maps an artifact&#x27;s .html path to its sibling spec path, e.g. index.html -&gt; index.spec.json.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>server.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← render_artifact handler <span class="sys-ek">calls</span></div><div class="sys-er">← save_artifact() <span class="sys-ek">calls</span></div><div class="sys-er">← get_artifact_spec() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>def spec_path_for(html_path: Path) -&gt; Path</code></div><div class="sys-snippet"><pre><code class="language-python">def spec_path_for(html_path: Path) -&gt; Path:
+    return html_path.with_suffix(&quot;&quot;).with_suffix(&quot;.spec.json&quot;)</code></pre></div></div>
+<div class="sys-panel" id="panel-cd-mcp_layer-save_artifact_tool" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">save_artifact()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">MCP tool. Promotes an ephemeral /tmp artifact (html + spec.json) to a persistent path, e.g. into this repo, creating directories as needed.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>server.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ spec_path_for() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>async def call_tool(&#x27;save_artifact&#x27;, {artifact_id, path})</code></div></div>
+<div class="sys-panel" id="panel-cd-mcp_layer-get_artifact_spec_tool" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">get_artifact_spec()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">MCP tool. Reads back the sibling &#x27;&lt;name&gt;.spec.json&#x27; for a persistent artifact&#x27;s .html path, so an agent can edit and re-render it in place.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>server.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ spec_path_for() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>async def call_tool(&#x27;get_artifact_spec&#x27;, {path})</code></div></div>
+<div class="sys-panel" id="panel-cd-mcp_layer-serve_artifact" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">serve_artifact()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">FastAPI route serving the /tmp preview, reading from the per-artifact directory layout.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>server.py</dd></dl><div class="sys-sig"><code>async def serve_artifact(artifact_id: str)</code></div><div class="sys-snippet"><pre><code class="language-python">path = ARTIFACT_DIR / artifact_id / f&quot;{artifact_id}.html&quot;</code></pre></div></div><div class="sys-legend"><div class="sys-leg-group"><div class="sys-leg-title">Nodes</div><div class="sys-leg-row"><span style="color:#D1CFC5">ƒ</span><span>function</span></div></div><div class="sys-leg-group"><div class="sys-leg-title">Edges</div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D97757;"></span><span>calls</span></div></div></div></div></div></div><div id="cdp-render_layer" class="sys-cd-panel" style="display:none"><div class="sys-wrap"><div class="sys-main"><div class="sys-diagram"><svg viewBox="0 0 1000 436" style="display:block;width:100%;height:auto;max-height:680px" id="cd-render_layer-sys-svg">
+<defs>
+<marker id="arr-C8C5BC" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"/></marker>
+<marker id="arr-D97757" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D97757"/></marker>
+</defs>
+<path d="M500.0,116.0 C500.0,207.8 382.0,228.2 382.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M500.0,116.0 C500.0,207.8 146.0,228.2 146.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M500.0,116.0 C500.0,207.8 618.0,228.2 618.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M500.0,116.0 C500.0,207.8 854.0,228.2 854.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M500.0,116.0 C500.0,148.4 618.0,155.6 618.0,188.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M500.0,116.0 C500.0,148.4 382.0,155.6 382.0,188.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M618.0,248.0 C618.0,280.4 382.0,287.6 382.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M618.0,248.0 C618.0,280.4 146.0,287.6 146.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M618.0,248.0 C618.0,280.4 618.0,287.6 618.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<path d="M618.0,248.0 C618.0,280.4 854.0,287.6 854.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<g class="sys-node" data-id="cd-render_layer-parse_spec" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="292.0" y="320.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="303.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="319.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">parse_spec()</text>
+<text x="319.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-render_layer-layout_graph" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="320.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="67.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="83.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">layout_graph()</text>
+<text x="83.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-render_layer-render_architecture_svg" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="528.0" y="320.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="539.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="555.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">render_architecture_svg()</text>
+<text x="555.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-render_layer-render_detail_panels" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="764.0" y="320.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="775.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="791.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">render_detail_panels()</text>
+<text x="791.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-render_layer-render_code_detail_html" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="528.0" y="188.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="539.0" y="215.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="555.0" y="212.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">render_code_detail_html()</text>
+<text x="555.0" y="228.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-render_layer-render_changes_html" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="292.0" y="188.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="303.0" y="215.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="319.0" y="212.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">render_changes_html()</text>
+<text x="319.0" y="228.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+<g class="sys-node" data-id="cd-render_layer-render_system_spec" data-kind="function" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="410.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="421.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">ƒ</text>
+<text x="437.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">render_system_spec()</text>
+<text x="437.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">Python</text>
+</g>
+</svg></div></div><div class="sys-sidebar"><div class="sys-hint">Click a node<br>to see details</div><div class="sys-panel" id="panel-cd-render_layer-parse_spec" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">parse_spec()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">Validates the spec via _validate_nodes_edges(), reused for the top-level spec AND for each group&#x27;s optional &#x27;detail&#x27; block (its own id namespace).</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← render_system_spec() <span class="sys-ek">calls</span></div><div class="sys-er">← render_code_detail_html() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>def parse_spec(data: dict) -&gt; dict</code></div></div>
+<div class="sys-panel" id="panel-cd-render_layer-layout_graph" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">layout_graph()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">Assigns node positions using Kahn&#x27;s longest-path layering, co-locating nodes from the same group within a layer.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← render_system_spec() <span class="sys-ek">calls</span></div><div class="sys-er">← render_code_detail_html() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>def layout_graph(nodes, edges, groups) -&gt; dict</code></div></div>
+<div class="sys-panel" id="panel-cd-render_layer-render_architecture_svg" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">render_architecture_svg()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">Renders the architecture diagram SVG. Takes an id_prefix param so multiple diagrams (one per Code Detail group) can coexist on one page without id collisions, and applies change-status coloring when a node has status added/modified/deleted.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← render_system_spec() <span class="sys-ek">calls</span></div><div class="sys-er">← render_code_detail_html() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>def render_architecture_svg(spec, positions, id_prefix=&quot;&quot;) -&gt; str</code></div></div>
+<div class="sys-panel" id="panel-cd-render_layer-render_detail_panels" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">render_detail_panels()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">Renders the per-node sidebar detail panels (description, signature, code snippet). Takes the same id_prefix param to match prefixed node ids.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← render_system_spec() <span class="sys-ek">calls</span></div><div class="sys-er">← render_code_detail_html() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>def render_detail_panels(spec, id_prefix=&quot;&quot;) -&gt; str</code></div></div>
+<div class="sys-panel" id="panel-cd-render_layer-render_code_detail_html" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">render_code_detail_html()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">For each group with a &#x27;detail&#x27; block, renders a nested mini architecture diagram + detail panels (using id_prefix), selectable via a &#x27;Module&#x27; dropdown — this is the Code Detail tab you&#x27;re reading right now.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ parse_spec() <span class="sys-ek">calls</span></div><div class="sys-er">→ layout_graph() <span class="sys-ek">calls</span></div><div class="sys-er">→ render_architecture_svg() <span class="sys-ek">calls</span></div><div class="sys-er">→ render_detail_panels() <span class="sys-ek">calls</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← render_system_spec() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>def render_code_detail_html(spec: dict) -&gt; str</code></div><div class="sys-snippet"><pre><code class="language-python">def render_code_detail_html(spec: dict) -&gt; str:
+    detail_groups = [g for g in spec[&quot;groups&quot;] if g.get(&quot;detail&quot;, {}).get(&quot;nodes&quot;)]
+    if not detail_groups:
+        return &quot;&quot;
+    ...
+    for g in detail_groups:
+        sub = parse_spec({&quot;title&quot;: g[&quot;label&quot;], &quot;nodes&quot;: g[&quot;detail&quot;][&quot;nodes&quot;],
+                          &quot;edges&quot;: g[&quot;detail&quot;].get(&quot;edges&quot;, [])})
+        positions = layout_graph(sub[&quot;nodes&quot;], sub[&quot;edges&quot;], [])
+        prefix = f&#x27;cd-{g[&quot;id&quot;]}-&#x27;
+        svg    = render_architecture_svg(sub, positions, id_prefix=prefix)
+        panels = render_detail_panels(sub, id_prefix=prefix)
+        ...</code></pre></div></div>
+<div class="sys-panel" id="panel-cd-render_layer-render_changes_html" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">render_changes_html()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">Renders the Changes tab from a flat node list. render_system_spec passes top-level nodes PLUS every node from every group&#x27;s &#x27;detail&#x27;, so a modified function inside a Code Detail group shows up there too. Only invoked when at least one node has status added/modified/deleted — not the case for this artifact.</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← render_system_spec() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>def render_changes_html(nodes: list) -&gt; str</code></div></div>
+<div class="sys-panel" id="panel-cd-render_layer-render_system_spec" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">ƒ</span><span class="sys-plabel">render_system_spec()</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">function</span></div><p class="sys-pdesc">Top-level entry point. Builds all_nodes (top-level + all group.detail nodes), computes render_code_detail_html(), and inserts a &#x27;Code Detail&#x27; tab between Sequences and Matrix when any group has detail (a &#x27;Changes&#x27; tab is inserted instead/also when any node has a change-tracking status).</p><dl class="sys-meta"><dt>Tech</dt><dd>Python</dd><dt>Location</dt><dd>system_spec.py</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ parse_spec() <span class="sys-ek">calls</span></div><div class="sys-er">→ layout_graph() <span class="sys-ek">calls</span></div><div class="sys-er">→ render_architecture_svg() <span class="sys-ek">calls</span></div><div class="sys-er">→ render_detail_panels() <span class="sys-ek">calls</span></div><div class="sys-er">→ render_code_detail_html() <span class="sys-ek">calls</span></div><div class="sys-er">→ render_changes_html() <span class="sys-ek">calls</span></div></div><div class="sys-sig"><code>def render_system_spec(data: dict) -&gt; str</code></div></div><div class="sys-legend"><div class="sys-leg-group"><div class="sys-leg-title">Nodes</div><div class="sys-leg-row"><span style="color:#D1CFC5">ƒ</span><span>function</span></div></div><div class="sys-leg-group"><div class="sys-leg-title">Edges</div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D97757;"></span><span>calls</span></div></div></div></div></div></div><div id="cdp-spec_layer" class="sys-cd-panel" style="display:none"><div class="sys-wrap"><div class="sys-main"><div class="sys-diagram"><svg viewBox="0 0 764 436" style="display:block;width:100%;height:auto;max-height:680px" id="cd-spec_layer-sys-svg">
+<defs>
+<marker id="arr-C8C5BC" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"/></marker>
+<marker id="arr-D1CFC5" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D1CFC5"/></marker>
+<marker id="arr-D97757" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#D97757"/></marker>
+<marker id="arr-87867F" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#87867F"/></marker>
+</defs>
+<path d="M146.0,116.0 C146.0,207.8 382.0,228.2 382.0,320.0" fill="none" stroke="#87867F" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arr-87867F)"/>
+<rect x="183.6" y="209.0" width="160.8" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="264.0" y="220.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">from/to reference node ids</text>
+<path d="M382.0,116.0 C382.0,207.8 382.0,228.2 382.0,320.0" fill="none" stroke="#87867F" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arr-87867F)"/>
+<rect x="301.6" y="209.0" width="160.8" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="382.0" y="220.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">members reference node ids</text>
+<path d="M382.0,116.0 C382.0,148.4 382.0,155.6 382.0,188.0" fill="none" stroke="#D1CFC5" stroke-width="1.5" marker-end="url(#arr-D1CFC5)"/>
+<rect x="319.0" y="143.0" width="126.0" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="382.0" y="154.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5">optional nested spec</text>
+<path d="M382.0,248.0 C382.0,280.4 382.0,287.6 382.0,320.0" fill="none" stroke="#D97757" stroke-width="1.5" marker-end="url(#arr-D97757)"/>
+<rect x="324.8" y="275.0" width="114.4" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="382.0" y="286.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D97757">own node namespace</text>
+<path d="M618.0,116.0 C618.0,207.8 382.0,228.2 382.0,320.0" fill="none" stroke="#87867F" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arr-87867F)"/>
+<rect x="425.4" y="209.0" width="149.2" height="14" rx="3" fill="rgba(250,249,245,0.92)"/>
+<text x="500.0" y="220.0" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">steps reference node ids</text>
+<g class="sys-node" data-id="cd-spec_layer-node_concept" data-kind="class" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="292.0" y="320.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="303.0" y="347.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">⟨⟩</text>
+<text x="319.0" y="344.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Node</text>
+<text x="319.0" y="360.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">JSON</text>
+</g>
+<g class="sys-node" data-id="cd-spec_layer-edge_concept" data-kind="class" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="56.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="67.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">⟨⟩</text>
+<text x="83.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Edge</text>
+<text x="83.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">JSON</text>
+</g>
+<g class="sys-node" data-id="cd-spec_layer-group_concept" data-kind="class" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="292.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="303.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">⟨⟩</text>
+<text x="319.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Group</text>
+<text x="319.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">JSON</text>
+</g>
+<g class="sys-node" data-id="cd-spec_layer-group_detail_concept" data-kind="class" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="292.0" y="188.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="303.0" y="215.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">⟨⟩</text>
+<text x="319.0" y="212.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Group.detail</text>
+<text x="319.0" y="228.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">JSON</text>
+</g>
+<g class="sys-node" data-id="cd-spec_layer-sequence_concept" data-kind="class" data-status="" style="cursor:pointer" onclick="sysClick(this)">
+<rect x="528.0" y="56.0" width="180" height="60" rx="10" fill="#FFFFFF" stroke="#D1CFC5" stroke-width="1.5" class="sys-nr"/>
+<text x="539.0" y="83.0" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="10" fill="#D1CFC5" opacity="0.75">⟨⟩</text>
+<text x="555.0" y="80.0" font-family="ui-serif,Georgia,serif" font-size="13" font-weight="500" fill="#141413">Sequence</text>
+<text x="555.0" y="96.0" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">JSON</text>
+</g>
+</svg></div></div><div class="sys-sidebar"><div class="sys-hint">Click a node<br>to see details</div><div class="sys-panel" id="panel-cd-spec_layer-node_concept" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">⟨⟩</span><span class="sys-plabel">Node</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">class</span></div><p class="sys-pdesc">A box in the Architecture diagram. &#x27;kind&#x27; picks its icon/color (service, db, queue, external, module, function, class, file, package). Code-level fields (signature, code_snippet, previous_code_snippet, file_path, line_range, status) add the detail-panel snippet, location metadata, and Changes-tab entries.</p><dl class="sys-meta"><dt>Tech</dt><dd>JSON</dd></dl><div class="sys-edges"><div class="sys-eg-label">Receives From</div><div class="sys-er">← Edge <span class="sys-ek">depends · from/to reference node ids</span></div><div class="sys-er">← Group <span class="sys-ek">depends · members reference node ids</span></div><div class="sys-er">← Group.detail <span class="sys-ek">instantiates · own node namespace</span></div><div class="sys-er">← Sequence <span class="sys-ek">depends · steps reference node ids</span></div></div><div class="sys-sig"><code>nodes[]</code></div><div class="sys-snippet"><pre><code class="language-plaintext">{
+  &quot;id&quot;: &quot;orders&quot;,              // unique, referenced by edges/groups/sequences
+  &quot;label&quot;: &quot;Order Service&quot;,
+  &quot;kind&quot;: &quot;service&quot;,           // service|db|queue|external|module|function|class|file|package
+  &quot;description&quot;: &quot;...&quot;,        // shown in the detail panel
+  &quot;tech&quot;: &quot;Go&quot;,                // sub-label
+  &quot;owner&quot;: &quot;team-name&quot;,
+  &quot;status&quot;: &quot;stable&quot;,          // stable|experimental|deprecated|planned
+                               // or added|modified|deleted -&gt; Changes tab + colored border
+  &quot;tags&quot;: [&quot;critical&quot;],
+  &quot;signature&quot;: &quot;func ...&quot;,      // code-level: shown above the snippet
+  &quot;code_snippet&quot;: &quot;...&quot;,        // code-level: syntax-highlighted
+  &quot;previous_code_snippet&quot;: &quot;...&quot;, // code-level: enables before/after diff
+  &quot;file_path&quot;: &quot;src/...&quot;,
+  &quot;line_range&quot;: [10, 42]
+}</code></pre></div></div>
+<div class="sys-panel" id="panel-cd-spec_layer-edge_concept" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">⟨⟩</span><span class="sys-plabel">Edge</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">class</span></div><p class="sys-pdesc">An arrow from one node to another. &#x27;kind&#x27; sets its color/style (calls, imports, depends, emits, subscribes, reads, writes, deploys, owns, returns, throws, overrides, implements, instantiates). &#x27;async: true&#x27; or certain kinds render as dashed.</p><dl class="sys-meta"><dt>Tech</dt><dd>JSON</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ Node <span class="sys-ek">depends · from/to reference node ids</span></div></div><div class="sys-sig"><code>edges[]</code></div><div class="sys-snippet"><pre><code class="language-plaintext">{
+  &quot;from&quot;: &quot;ui&quot;,                // node id
+  &quot;to&quot;: &quot;api&quot;,                  // node id
+  &quot;kind&quot;: &quot;calls&quot;,
+  &quot;label&quot;: &quot;REST&quot;,              // optional, shown on the arrow
+  &quot;async&quot;: false,               // optional -&gt; dashed line
+  &quot;protocol&quot;: &quot;HTTP&quot;            // optional, informational
+}</code></pre></div></div>
+<div class="sys-panel" id="panel-cd-spec_layer-group_concept" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">⟨⟩</span><span class="sys-plabel">Group</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">class</span></div><p class="sys-pdesc">A labeled bounding box around a set of node ids. kind=&#x27;layer&#x27; groups also become swim-lanes in the Layers tab. Other kinds (package, team, domain, deployment) are drawn but don&#x27;t add a Layers lane.</p><dl class="sys-meta"><dt>Tech</dt><dd>JSON</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ Node <span class="sys-ek">depends · members reference node ids</span></div><div class="sys-er">→ Group.detail <span class="sys-ek">owns · optional nested spec</span></div></div><div class="sys-sig"><code>groups[]</code></div><div class="sys-snippet"><pre><code class="language-plaintext">{
+  &quot;id&quot;: &quot;frontend&quot;,
+  &quot;label&quot;: &quot;Frontend&quot;,
+  &quot;kind&quot;: &quot;layer&quot;,              // layer|package|team|domain|deployment
+  &quot;members&quot;: [&quot;ui&quot;, &quot;client&quot;],  // node ids
+  &quot;detail&quot;: { ... }             // optional, see Group.detail
+}</code></pre></div></div>
+<div class="sys-panel" id="panel-cd-spec_layer-group_detail_concept" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">⟨⟩</span><span class="sys-plabel">Group.detail</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">class</span></div><p class="sys-pdesc">An optional nested spec on a group: its own &#x27;nodes&#x27; and &#x27;edges&#x27; (own id namespace, typically function/class/file kinds). Each group with a non-empty detail.nodes gets an entry in the Code Detail tab&#x27;s module dropdown, rendered as its own mini architecture diagram + detail panels. This Spec Language section is itself a Group.detail.</p><dl class="sys-meta"><dt>Tech</dt><dd>JSON</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ Node <span class="sys-ek">instantiates · own node namespace</span></div><div class="sys-eg-label">Receives From</div><div class="sys-er">← Group <span class="sys-ek">owns · optional nested spec</span></div></div><div class="sys-sig"><code>groups[].detail</code></div><div class="sys-snippet"><pre><code class="language-plaintext">{
+  &quot;nodes&quot;: [
+    {&quot;id&quot;: &quot;handler&quot;, &quot;label&quot;: &quot;handle_request()&quot;, &quot;kind&quot;: &quot;function&quot;,
+     &quot;signature&quot;: &quot;def handle_request(req) -&gt; Response&quot;, &quot;code_snippet&quot;: &quot;...&quot;}
+  ],
+  &quot;edges&quot;: [
+    {&quot;from&quot;: &quot;handler&quot;, &quot;to&quot;: &quot;handler&quot;, &quot;kind&quot;: &quot;calls&quot;}
+  ]
+}</code></pre></div></div>
+<div class="sys-panel" id="panel-cd-spec_layer-sequence_concept" style="display:none"><div class="sys-ph"><span style="color:#D1CFC5;font-size:14px">⟨⟩</span><span class="sys-plabel">Sequence</span><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">class</span></div><p class="sys-pdesc">An ordered list of steps (from -&gt; to, with a label) between top-level node ids, rendered as a sequence/swimlane diagram in the Sequences tab with a dropdown to pick between multiple sequences.</p><dl class="sys-meta"><dt>Tech</dt><dd>JSON</dd></dl><div class="sys-edges"><div class="sys-eg-label">Calls / Sends</div><div class="sys-er">→ Node <span class="sys-ek">depends · steps reference node ids</span></div></div><div class="sys-sig"><code>sequences[]</code></div><div class="sys-snippet"><pre><code class="language-plaintext">{
+  &quot;id&quot;: &quot;login&quot;,
+  &quot;label&quot;: &quot;Login Flow&quot;,
+  &quot;steps&quot;: [
+    {&quot;from&quot;: &quot;client&quot;, &quot;to&quot;: &quot;api&quot;, &quot;label&quot;: &quot;POST /login&quot;},
+    {&quot;from&quot;: &quot;api&quot;, &quot;to&quot;: &quot;db&quot;, &quot;label&quot;: &quot;lookup user&quot;}
+  ]
+}</code></pre></div></div><div class="sys-legend"><div class="sys-leg-group"><div class="sys-leg-title">Nodes</div><div class="sys-leg-row"><span style="color:#D1CFC5">⟨⟩</span><span>class</span></div></div><div class="sys-leg-group"><div class="sys-leg-title">Edges</div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#87867F;border-top-style:dashed"></span><span>depends</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D97757;"></span><span>instantiates</span></div><div class="sys-leg-row"><span class="sys-leg-line" style="border-color:#D1CFC5;"></span><span>owns</span></div></div></div></div></div></div></div>
 </div>
 
-<div id="view-components" class="sys-view" style="display: none;">
-  <div class="sys-clist"><div class="sys-filters"><span class="sys-fl">Kind</span><button class="sys-fc active" data-fk="db" style="color:#788C5D;border-color:#788C5D" onclick="sysFKind(this)">⬡ db</button><button class="sys-fc active" data-fk="external" style="color:#87867F;border-color:#87867F" onclick="sysFKind(this)">◇ external</button><button class="sys-fc active" data-fk="file" style="color:#D1CFC5;border-color:#D1CFC5" onclick="sysFKind(this)">≡ file</button><button class="sys-fc active" data-fk="module" style="color:#87867F;border-color:#87867F" onclick="sysFKind(this)">□ module</button><button class="sys-fc active" data-fk="service" style="color:#D97757;border-color:#D97757" onclick="sysFKind(this)">◈ service</button></div><div class="sys-tbl-wrap"><table class="sys-ctable"><thead><tr><th>Name</th><th>Kind</th><th>Tech</th><th>Owner</th><th>Status</th><th>Tags</th><th>Description</th></tr></thead><tbody><tr class="sys-cr" data-rkind="external" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">◇</span><strong>Claude (LLM)</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></td><td class="sys-mono"></td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">The Claude instance (you). Reads CLAUDE.md instructions at session start, calls get_example to learn the spec schema, then calls render_artifact with a system_spec payload describing the target system.</td></tr><tr class="sys-cr" data-rkind="service" data-rstatus=""><td><span style="color:#D97757;margin-right:4px">◈</span><strong>MCP Client</strong></td><td><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></td><td class="sys-mono">Claude Code</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">The MCP client embedded in Claude Code. Maintains a stdio connection to server.py. Serializes tool calls as JSON-RPC and deserializes responses. Presents available tools to Claude at session start.</td></tr><tr class="sys-cr" data-rkind="service" data-rstatus=""><td><span style="color:#D97757;margin-right:4px">◈</span><strong>server.py</strong></td><td><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></td><td class="sys-mono">Python + FastAPI</td><td class="sys-mono"></td><td class="sys-mono"></td><td><span class="sys-tag">critical</span></td><td class="sys-dc">The heart of the tool. Runs two concurrent servers: (1) an MCP stdio server that receives tool calls from Claude Code, and (2) a FastAPI HTTP server on port 8765 that serves rendered HTML files to the browser. Handles get_example and render_artifact tools.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>template_loader.py</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Builds the render_artifact tool description that Claude sees. This is what tells Claude about the spec schema, node/edge/group kinds, and how to invoke the tool. Keeping it accurate and concise is key to good agent behavior.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>system_spec_examples.py</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Three reference specs: sys_microservices (e-commerce platform), sys_event_driven (IoT pipeline), sys_monolith (Rails app). Claude calls get_example to read one of these before building a spec, ensuring it understands the correct schema shape.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>system_spec.py</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td><span class="sys-tag">critical</span></td><td class="sys-dc">The renderer. Takes a validated spec dict and produces a complete HTML page with five views: Architecture (SVG box-and-arrow), Layers (swim-lanes), Sequences (swim-lane diagrams), Matrix (adjacency table), Components (filterable table). Layout uses Kahn's longest-path algorithm for topological ordering.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>design_system.py</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">CSS design tokens and shared HTML utilities. Ivory/slate/clay/olive/rust palette, serif headings. Imported by system_spec.py for consistent visual style.</td></tr><tr class="sys-cr" data-rkind="db" data-rstatus=""><td><span style="color:#788C5D;margin-right:4px">⬡</span><strong>/tmp/artifact_ui</strong></td><td><span class="sys-kbadge" style="color:#788C5D;border-color:#788C5D">db</span></td><td class="sys-mono">filesystem</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Temporary directory where rendered HTML files are written. Each artifact is a single self-contained HTML file named {artifact_id}.html. Also stores server.pid so the running server process can be tracked.</td></tr><tr class="sys-cr" data-rkind="external" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">◇</span><strong>Browser</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></td><td class="sys-mono"></td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">The user's browser. Opened automatically via webbrowser.open() when render_artifact is called. Fetches the artifact HTML from the FastAPI server and renders the interactive diagram. The Save button downloads the current page as a standalone HTML file.</td></tr><tr class="sys-cr" data-rkind="file" data-rstatus=""><td><span style="color:#D1CFC5;margin-right:4px">≡</span><strong>CLAUDE.md</strong></td><td><span class="sys-kbadge" style="color:#D1CFC5;border-color:#D1CFC5">file</span></td><td class="sys-mono">Markdown</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Two files: ~/.claude/CLAUDE.md (global) and artifact-ui/CLAUDE.md (project). Loaded into Claude's context at session start. Tell Claude to always call get_example first, always use template='system_spec', prefer render_artifact over AskUserQuestion for decisions.</td></tr></tbody></table></div></div>
+
+<div id="view-matrix" class="sys-view" style="display:none">
+  <div class="sys-matrix-wrap"><table class="sys-mtx"><thead><tr><th class="sys-mh0"></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#D97757">◈</span><span>MCP Server</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>system_spec</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>system_spec_examples</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>template_loader</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>design_system</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">□</span><span>system_spec Format</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#788C5D">⬡</span><span>Artifact Storage</span></div></th><th class="sys-mth"><div class="sys-mth-inner"><span style="color:#87867F">◇</span><span>Browser Tab</span></div></th></tr></thead><tbody><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">◇</span>AI Agent</td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="agent → mcp_server">calls</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#D97757;margin-right:4px">◈</span>MCP Server</td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="mcp_server → system_spec">calls</td><td class="sys-mc sys-mc-hit" style="color:#788C5D;background:rgba(120,140,93,0.07)" title="mcp_server → examples">reads</td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="mcp_server → template_loader">calls</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#B04A3F;background:rgba(176,74,63,0.07)" title="mcp_server → storage">writes · reads</td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="mcp_server → browser">calls</td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">□</span>system_spec</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#87867F;background:rgba(135,134,127,0.07)" title="system_spec → design_system">imports</td><td class="sys-mc sys-mc-hit" style="color:#87867F;background:rgba(135,134,127,0.07)" title="system_spec → spec_format">depends</td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">□</span>system_spec_examples</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#D97757;background:rgba(217,119,87,0.07)" title="examples → spec_format">instantiates</td><td class="sys-mc"></td><td class="sys-mc"></td></tr><tr><td class="sys-mrh"><span style="color:#87867F;margin-right:4px">□</span>template_loader</td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc"></td><td class="sys-mc sys-mc-hit" style="color:#87867F;background:rgba(135,134,127,0.07)" title="template_loader → spec_format">depends</td><td class="sys-mc"></td><td class="sys-mc"></td></tr></tbody></table></div>
+</div>
+
+<div id="view-components" class="sys-view" style="display:none">
+  <div class="sys-clist"><div class="sys-filters"><span class="sys-fl">Kind</span><button class="sys-fc active" data-fk="db" style="color:#788C5D;border-color:#788C5D" onclick="sysFKind(this)">⬡ db</button><button class="sys-fc active" data-fk="external" style="color:#87867F;border-color:#87867F" onclick="sysFKind(this)">◇ external</button><button class="sys-fc active" data-fk="module" style="color:#87867F;border-color:#87867F" onclick="sysFKind(this)">□ module</button><button class="sys-fc active" data-fk="service" style="color:#D97757;border-color:#D97757" onclick="sysFKind(this)">◈ service</button></div><div class="sys-tbl-wrap"><table class="sys-ctable"><thead><tr><th>Name</th><th>Kind</th><th>Tech</th><th>Owner</th><th>Status</th><th>Tags</th><th>Description</th></tr></thead><tbody><tr class="sys-cr" data-rkind="external" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">◇</span><strong>AI Agent</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></td><td class="sys-mono">Claude Code</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Claude (or another MCP client) calling the artifact-ui tools to explain code, plans, or architecture.</td></tr><tr class="sys-cr" data-rkind="service" data-rstatus=""><td><span style="color:#D97757;margin-right:4px">◈</span><strong>MCP Server</strong></td><td><span class="sys-kbadge" style="color:#D97757;border-color:#D97757">service</span></td><td class="sys-mono">Python · FastAPI · MCP</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">stdio JSON-RPC MCP server + a FastAPI app on :8765, sharing one asyncio event loop. Exposes get_example, render_artifact, save_artifact, get_artifact_spec.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>system_spec</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Core renderer: validates specs, lays out the architecture diagram (Kahn&#x27;s longest-path layout), and renders all six views.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>system_spec_examples</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Library of example specs (sys_microservices, sys_event_driven, sys_monolith, code_impl_plan, code_bug_fix, mixed_levels) returned by get_example.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>template_loader</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Builds the render_artifact tool description (use cases, schema, vocab) shown to the agent.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>design_system</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">Python</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Shared HTML page shell, CSS tokens, and the page_wrapper() used by every rendered artifact.</td></tr><tr class="sys-cr" data-rkind="module" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">□</span><strong>system_spec Format</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">module</span></td><td class="sys-mono">JSON</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">The JSON schema an agent writes as the &#x27;data&#x27; argument to render_artifact: nodes, edges, groups (optionally with a nested &#x27;detail&#x27; for the Code Detail tab), and sequences.</td></tr><tr class="sys-cr" data-rkind="db" data-rstatus=""><td><span style="color:#788C5D;margin-right:4px">⬡</span><strong>Artifact Storage</strong></td><td><span class="sys-kbadge" style="color:#788C5D;border-color:#788C5D">db</span></td><td class="sys-mono">Filesystem</td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Ephemeral previews under /tmp/artifact_ui/{id}/{id}.html + {id}.spec.json, plus optional persistent paths (e.g. this index.html + index.spec.json) written when &#x27;path&#x27; is given to render_artifact.</td></tr><tr class="sys-cr" data-rkind="external" data-rstatus=""><td><span style="color:#87867F;margin-right:4px">◇</span><strong>Browser Tab</strong></td><td><span class="sys-kbadge" style="color:#87867F;border-color:#87867F">external</span></td><td class="sys-mono"></td><td class="sys-mono"></td><td class="sys-mono"></td><td></td><td class="sys-dc">Opened via webbrowser.open() to preview the rendered artifact, with an injected Save button for ephemeral artifacts.</td></tr></tbody></table></div></div>
 </div>
 <script>
 /* ── Tab switching ─────────────────────────────── */
@@ -1003,18 +1235,19 @@ var _active = null;
 function sysClick(el) {
     var nid = el.getAttribute('data-id');
     var panel = document.getElementById('panel-' + nid);
-    var hint = document.getElementById('sys-hint');
+    var wrap = el.closest('.sys-wrap');
+    var hint = wrap ? wrap.querySelector('.sys-hint') : null;
 
     if (_active === el) {
         el.classList.remove('active');
         _active = null;
-        document.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+        if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
         if (hint) hint.style.display = 'block';
         return;
     }
 
     if (_active) _active.classList.remove('active');
-    document.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+    if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
 
     el.classList.add('active');
     _active = el;
@@ -1022,21 +1255,28 @@ function sysClick(el) {
     if (panel) panel.style.display = 'block';
 }
 
-/* ── Architecture kind filter ──────────────────── */
+/* ── Architecture kind + status filters ─────────── */
 function sysAKind(btn) {
     btn.classList.toggle('active');
     _applyArchFilter();
 }
+function sysAStatus(btn) {
+    btn.classList.toggle('active');
+    _applyArchFilter();
+}
 function _applyArchFilter() {
-    var active = new Set();
-    document.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) {
-        active.add(b.getAttribute('data-ak'));
-    });
-    var all = document.querySelectorAll('.sys-fc[data-ak]').length === 0;
+    var kinds = new Set();
+    document.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) { kinds.add(b.getAttribute('data-ak')); });
+    var statuses = new Set();
+    document.querySelectorAll('.sys-fc[data-as].active').forEach(function(b) { statuses.add(b.getAttribute('data-as')); });
+    var hasKindFilter   = document.querySelectorAll('.sys-fc[data-ak]').length > 0;
+    var hasStatusFilter = document.querySelectorAll('.sys-fc[data-as]').length > 0;
     document.querySelectorAll('.sys-node').forEach(function(n) {
         var k = n.getAttribute('data-kind');
-        var show = all || active.size === 0 || active.has(k);
-        n.classList.toggle('filtered-out', !show);
+        var s = n.getAttribute('data-status') || '';
+        var kOk = !hasKindFilter   || kinds.size === 0    || kinds.has(k);
+        var sOk = !hasStatusFilter || statuses.size === 0 || !s || statuses.has(s);
+        n.classList.toggle('filtered-out', !(kOk && sOk));
     });
 }
 
@@ -1045,6 +1285,14 @@ function sysSeqChange(sel) {
     var val = sel.value;
     document.querySelectorAll('.sys-seq-panel').forEach(function(p) {
         p.style.display = (p.id === 'seqp-' + val) ? '' : 'none';
+    });
+}
+
+/* ── Code detail selector ──────────────────────── */
+function sysCodeDetailChange(sel) {
+    var val = sel.value;
+    document.querySelectorAll('.sys-cd-panel').forEach(function(p) {
+        p.style.display = (p.id === 'cdp-' + val) ? '' : 'none';
     });
 }
 
@@ -1075,50 +1323,5 @@ function _applyListFilter() {
 </script>
 
   </div>
-<script>
-window.artifact = {
-  submit: function(payload) {
-    fetch('http://localhost:8765/artifact/event', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({artifact_id: 'artifact-ui-explainer', event: payload})
-    });
-  }
-};
-function __artifactSave() {
-  var blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'artifact-ui-explainer.html';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
-}
-</script>
-<style>
-#__artifact_save_btn {
-  position: fixed;
-  bottom: 16px;
-  right: 16px;
-  z-index: 99999;
-  background: #FAF9F5;
-  color: #87867F;
-  border: 1.5px solid #D1CFC5;
-  border-radius: 8px;
-  padding: 7px 14px;
-  font-size: 0.75rem;
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
-}
-#__artifact_save_btn:hover {
-  opacity: 1;
-  border-color: #D97757;
-  color: #141413;
-}
-</style>
-<button id="__artifact_save_btn" onclick="__artifactSave()">⬇ Save</button>
-
-<div id="hl-aria-live-message-container" aria-live="polite" class="visually-hidden"></div><div id="hl-aria-live-alert-container" role="alert" aria-live="assertive" class="visually-hidden"></div></body></html>
+</body>
+</html>
