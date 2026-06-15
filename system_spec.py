@@ -1,4 +1,6 @@
 import html as _html
+import json
+import os
 from collections import defaultdict, deque
 from design_system import page_wrapper
 
@@ -14,9 +16,12 @@ NODE_KIND_STYLES = {
     "function": {"stroke": "#D1CFC5", "fill": "#FFFFFF",                "icon": "ƒ"},
     "package":  {"stroke": "#87867F", "fill": "rgba(135,134,127,0.05)", "icon": "⊡"},
     "file":     {"stroke": "#D1CFC5", "fill": "#FFFFFF",                "icon": "≡"},
+    "cache":    {"stroke": "#B8860B", "fill": "rgba(184,134,11,0.07)",  "icon": "⚡"},
 }
 
 _DEFAULT_NODE_STYLE = {"stroke": "#D1CFC5", "fill": "#FFFFFF", "icon": "○"}
+
+_NODE_KIND_STYLES_JSON = json.dumps({**NODE_KIND_STYLES, "__default__": _DEFAULT_NODE_STYLE})
 
 EDGE_KIND_STYLES = {
     "calls":        {"color": "#D97757", "dashed": False},
@@ -77,6 +82,66 @@ H_GAP  = 56
 V_GAP  = 72
 PAD    = 56
 
+PROBABILITY_STYLES = {
+    "common":   {"color": "#788C5D"},
+    "uncommon": {"color": "#B8860B"},
+    "rare":     {"color": "#B04A3F"},
+}
+_DEFAULT_PROBABILITY_STYLE = {"color": "#87867F"}
+
+
+def _load_archetypes() -> list:
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "archetypes.json")
+    try:
+        with open(path) as f:
+            return json.load(f).get("archetypes", [])
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+_ARCHETYPES = _load_archetypes()
+
+
+def _substitute(obj, component_id: str, component_label: str):
+    """Recursively substitute {component} / {component_label} placeholders in strings."""
+    if isinstance(obj, str):
+        return obj.replace("{component_label}", component_label).replace("{component}", component_id)
+    if isinstance(obj, list):
+        return [_substitute(v, component_id, component_label) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _substitute(v, component_id, component_label) for k, v in obj.items()}
+    return obj
+
+
+def _apply_archetypes(actions: list, node_by_id: dict) -> None:
+    """Mutates each action's outcomes list in-place, injecting archetype-based
+    failure outcomes for every component it touches."""
+    by_kind: dict[str, list] = defaultdict(list)
+    by_id:   dict[str, list] = defaultdict(list)
+    for arch in _ARCHETYPES:
+        if arch.get("applies_to_kind"):
+            by_kind[arch["applies_to_kind"]].append(arch)
+        by_id[arch["id"]].append(arch)
+
+    for action in actions:
+        touches = action.get("touches", [])
+        seen_outcome_ids = {o["id"] for o in action.get("outcomes", [])}
+        for comp_id in touches:
+            comp = node_by_id.get(comp_id)
+            if not comp:
+                continue
+            archetypes = list(by_kind.get(comp.get("kind", ""), []))
+            for arch_id in comp.get("archetypes", []):
+                archetypes.extend(by_id.get(arch_id, []))
+            for arch in archetypes:
+                for template in arch.get("inject_outcomes", []):
+                    new_outcome = _substitute(template, comp_id, comp.get("label", comp_id))
+                    if new_outcome["id"] in seen_outcome_ids:
+                        continue
+                    new_outcome["_origin"] = f"archetype:{arch['id']}@{comp_id}"
+                    action.setdefault("outcomes", []).append(new_outcome)
+                    seen_outcome_ids.add(new_outcome["id"])
+
 
 # ── Validation ────────────────────────────────────────────────────────────────
 
@@ -106,12 +171,70 @@ def _validate_nodes_edges(nodes: list, edges: list, context: str) -> set:
     return node_ids
 
 
+def _validate_behavior(nodes: list, node_ids: set, actions: list, facts: list, data_types: list) -> set:
+    """Validates actions/facts/data_types and returns the set of fact ids
+    (declared explicitly or referenced implicitly by actions)."""
+    data_type_ids = set()
+    for i, dt in enumerate(data_types):
+        if "id" not in dt:
+            raise ValueError(f"data_types[{i}] is missing required field 'id'.")
+        data_type_ids.add(dt["id"])
+
+    fact_ids = {f["id"] for f in facts if "id" in f}
+    for i, f in enumerate(facts):
+        if "id" not in f:
+            raise ValueError(f"facts[{i}] is missing required field 'id'.")
+
+    action_ids = set()
+    for i, action in enumerate(actions):
+        if "id" not in action:
+            raise ValueError(f"actions[{i}] is missing required field 'id'.")
+        aid = action["id"]
+        if aid in action_ids:
+            raise ValueError(f"actions[{i}]: duplicate action id {aid!r}.")
+        action_ids.add(aid)
+
+        component = action.get("component")
+        if component is not None and component not in node_ids:
+            raise ValueError(f"actions[{i}] (id={aid!r}): 'component' references unknown node id {component!r}.")
+
+        for comp in action.get("touches", []):
+            if comp not in node_ids:
+                raise ValueError(f"actions[{i}] (id={aid!r}): 'touches' references unknown node id {comp!r}.")
+
+        for f in action.get("preconditions", []):
+            fact_ids.add(f)
+
+        outcomes = action.get("outcomes", [])
+        outcome_ids = set()
+        for j, outcome in enumerate(outcomes):
+            if "id" not in outcome:
+                raise ValueError(f"actions[{i}] (id={aid!r}).outcomes[{j}] is missing required field 'id'.")
+            oid = outcome["id"]
+            if oid in outcome_ids:
+                raise ValueError(f"actions[{i}] (id={aid!r}): duplicate outcome id {oid!r}.")
+            outcome_ids.add(oid)
+            for f in outcome.get("requires", []):
+                fact_ids.add(f)
+            effects = outcome.get("effects", {})
+            for f in effects.get("add", []):
+                fact_ids.add(f)
+            for f in effects.get("remove", []):
+                fact_ids.add(f)
+
+    return fact_ids
+
+
 def parse_spec(data: dict) -> dict:
-    title  = data.get("title", "Untitled System")
-    nodes  = data.get("nodes", [])
-    edges  = data.get("edges", [])
-    groups = data.get("groups", [])
-    seqs   = data.get("sequences", [])
+    title      = data.get("title", "Untitled System")
+    nodes      = data.get("nodes", [])
+    edges      = data.get("edges", [])
+    groups     = data.get("groups", [])
+    seqs       = data.get("sequences", [])
+    actions    = data.get("actions", [])
+    facts      = data.get("facts", [])
+    data_types = data.get("data_types", [])
+    scenarios  = data.get("scenarios", [])
 
     if not nodes:
         raise ValueError("system_spec requires at least one node in 'nodes'.")
@@ -148,6 +271,26 @@ def parse_spec(data: dict) -> dict:
                         f"sequences[{i}].steps[{j}]: {field!r} references unknown node id {val!r}."
                     )
 
+    for i, sc in enumerate(scenarios):
+        if "id" not in sc:
+            raise ValueError(f"scenarios[{i}] is missing required field 'id'.")
+        if "label" not in sc:
+            raise ValueError(f"scenarios[{i}] (id={sc['id']!r}) is missing required field 'label'.")
+
+    fact_ids = _validate_behavior(nodes, node_ids, actions, facts, data_types)
+
+    # Build a fact registry covering both explicitly declared and implicitly-referenced facts
+    declared_facts = {f["id"]: f for f in facts}
+    fact_registry = []
+    for fid in fact_ids:
+        if fid in declared_facts:
+            fact_registry.append(declared_facts[fid])
+        else:
+            fact_registry.append({"id": fid, "label": fid, "initial": False})
+
+    node_by_id = {n["id"]: n for n in nodes}
+    _apply_archetypes(actions, node_by_id)
+
     return {
         "title":       title,
         "description": data.get("description", ""),
@@ -155,6 +298,10 @@ def parse_spec(data: dict) -> dict:
         "edges":       edges,
         "groups":      groups,
         "sequences":   seqs,
+        "actions":     actions,
+        "facts":       fact_registry,
+        "data_types":  data_types,
+        "scenarios":   scenarios,
         "node_ids":    node_ids,
     }
 
@@ -844,6 +991,57 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
     return "\n".join(parts)
 
 
+# ── Behavior / traces view ───────────────────────────────────────────────────
+
+def render_behavior_html(spec: dict) -> str:
+    actions = spec.get("actions", [])
+    if not actions:
+        return ""
+
+    scenarios = spec.get("scenarios", [])
+    facts     = spec.get("facts", [])
+    nodes     = spec["nodes"]
+    node_by_id = {
+        n["id"]: {"label": n.get("label", n["id"]), "kind": n.get("kind", ""), "tech": n.get("tech", "")}
+        for n in nodes
+    }
+
+    payload = {
+        "actions":    actions,
+        "facts":      facts,
+        "scenarios":  scenarios,
+        "data_types": spec.get("data_types", []),
+        "nodes":      node_by_id,
+    }
+    payload_json = json.dumps(payload).replace("</", "<\\/")
+
+    html = '<div class="sys-behavior-wrap">'
+    if scenarios:
+        html += '<div class="sys-behavior-controls">'
+        html += '<span class="sys-fl">Scenario</span>'
+        html += '<select class="sys-behavior-sel" onchange="sysBehaviorRender()" id="sys-behavior-sel">'
+        for sc in scenarios:
+            html += f'<option value="{_e(sc["id"])}">{_e(sc["label"])}</option>'
+        html += '</select>'
+        html += (
+            '<label class="sys-behavior-toggle">'
+            '<input type="checkbox" id="sys-behavior-failures" onchange="sysBehaviorRender()"> '
+            'Failure traces only</label>'
+        )
+        html += '</div>'
+    else:
+        html += (
+            '<p class="sys-mono" style="color:var(--gray-500);padding:20px 0">'
+            'No scenarios defined. Add a "scenarios" array (id, label, initial_facts, goal_fact) '
+            'to derive execution traces.</p>'
+        )
+
+    html += '<div id="sys-behavior-traces" class="sys-behavior-traces"></div>'
+    html += f'<script type="application/json" id="sys-behavior-data">{payload_json}</script>'
+    html += '</div>'
+    return html
+
+
 def render_sequence_html(spec: dict) -> str:
     sequences = spec.get("sequences", [])
     if not sequences:
@@ -957,8 +1155,15 @@ def render_matrix_html(spec: dict) -> str:
 
 def render_component_list_html(spec: dict) -> str:
     nodes = spec["nodes"]
+    actions = spec.get("actions", [])
     kinds    = sorted({n.get("kind", "") for n in nodes if n.get("kind")})
     statuses = sorted({n.get("status", "") for n in nodes if n.get("status")})
+
+    actions_by_component: dict[str, list] = defaultdict(list)
+    for action in actions:
+        comp = action.get("component")
+        if comp:
+            actions_by_component[comp].append(action)
 
     html = '<div class="sys-clist">'
 
@@ -986,7 +1191,10 @@ def render_component_list_html(spec: dict) -> str:
         '<div class="sys-tbl-wrap">'
         '<table class="sys-ctable"><thead><tr>'
     )
-    for col in ["Name", "Kind", "Tech", "Owner", "Status", "Tags", "Description"]:
+    cols = ["Name", "Kind", "Tech", "Owner", "Status", "Tags", "Description"]
+    if actions:
+        cols.append("Actions")
+    for col in cols:
         html += f'<th>{col}</th>'
     html += '</tr></thead><tbody>'
 
@@ -1008,8 +1216,14 @@ def render_component_list_html(spec: dict) -> str:
             f'<td class="sys-mono">{_e(status)}</td>'
             f'<td>{tags_h}</td>'
             f'<td class="sys-dc">{_e(node.get("description", ""))}</td>'
-            f'</tr>'
         )
+        if actions:
+            owned = actions_by_component.get(nid, [])
+            owned_h = "".join(
+                f'<span class="sys-tag">{_e(a.get("label", a["id"]))}</span>' for a in owned
+            ) or "—"
+            html += f'<td>{owned_h}</td>'
+        html += '</tr>'
 
     html += '</tbody></table></div></div>'
     return html
@@ -1293,6 +1507,21 @@ _CSS = """
 .sys-snippet pre { margin: 0; padding: 10px 12px; background: var(--ivory); border: var(--border); border-radius: 8px; overflow-x: auto; max-height: 320px; font-size: 0.78rem; line-height: 1.5; }
 .sys-snippet pre code { font-family: var(--mono); }
 
+/* ── Behavior / traces view ───────────────────── */
+.sys-behavior-wrap { display: flex; flex-direction: column; gap: 14px; }
+.sys-behavior-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sys-behavior-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
+                    padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
+                    appearance: none; -webkit-appearance: none; }
+.sys-behavior-toggle { font-family: var(--mono); font-size: 11px; color: var(--gray-700);
+                       display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.sys-behavior-traces { display: flex; flex-direction: column; gap: 16px; }
+.sys-trace-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+.sys-trace-header { display: flex; align-items: center; gap: 10px; }
+.sys-trace-title { font-family: var(--serif); font-size: 14px; font-weight: 600; }
+.sys-trace-diagram { overflow-x: auto; }
+.sys-trace-facts { border-top: 1px solid var(--gray-100); padding-top: 8px; }
+
 /* ── Changes tab ──────────────────────────────── */
 .sys-changes { display: flex; flex-direction: column; gap: 24px; }
 .sys-chg-section { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
@@ -1407,6 +1636,195 @@ function _applyListFilter() {
         row.style.display = (kOk && sOk) ? '' : 'none';
     });
 }
+
+/* ── Behavior / trace derivation ───────────────────────────────────────────── */
+var SYS_NODE_STYLES = __NODE_KIND_STYLES__;
+
+function sysEsc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* Forward BFS over fact-sets. action.preconditions gate whether an action is
+   enabled; outcome.requires further gates a specific branch. effects.add/remove
+   are applied to the fact-set to produce the next state. */
+function sysDeriveTraces(actions, scenario, maxDepth, maxTraces) {
+    maxDepth = maxDepth || 12;
+    maxTraces = maxTraces || 50;
+    var initial = new Set(scenario.initial_facts || []);
+    var queue = [{ state: initial, history: [] }];
+    var completed = [];
+    var failed = [];
+    var seen = new Set();
+
+    while (queue.length && completed.length < maxTraces && (completed.length + failed.length) < maxTraces * 4) {
+        var node = queue.shift();
+        if (scenario.goal_fact && node.state.has(scenario.goal_fact)) {
+            completed.push(node);
+            continue;
+        }
+        if (node.history.length >= maxDepth) {
+            failed.push(node);
+            continue;
+        }
+        var enabled = actions.filter(function(a) {
+            return (a.preconditions || []).every(function(f) { return node.state.has(f); });
+        });
+        var branched = false;
+        for (var ai = 0; ai < enabled.length; ai++) {
+            var a = enabled[ai];
+            var outcomes = a.outcomes || [];
+            for (var oi = 0; oi < outcomes.length; oi++) {
+                var o = outcomes[oi];
+                if (!(o.requires || []).every(function(f) { return node.state.has(f); })) continue;
+                var newState = new Set(node.state);
+                (o.effects && o.effects.remove || []).forEach(function(f) { newState.delete(f); });
+                (o.effects && o.effects.add || []).forEach(function(f) { newState.add(f); });
+                var key = Array.from(newState).sort().join(',') + '|' + a.id + ':' + o.id;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                branched = true;
+                queue.push({ state: newState, history: node.history.concat([{ action: a, outcome: o }]) });
+            }
+        }
+        if (!branched) failed.push(node);
+    }
+    return { completed: completed, failed: failed };
+}
+
+/* Compile a derived trace's history into sequence-diagram steps
+   (from = action.component, to = a touched component, label = outcome). */
+function sysTraceToSteps(history) {
+    return history.map(function(step) {
+        var a = step.action, o = step.outcome;
+        var touches = (a.touches || []).filter(function(t) { return t !== a.component; });
+        var to = touches.length ? touches[0] : a.component;
+        var label = a.label + ' → ' + o.label;
+        if (o.emits && o.emits.length) label += '  [' + o.emits.join(', ') + ']';
+        return { from: a.component, to: to, label: label, failure: !!o._origin };
+    });
+}
+
+function sysSeqSvgJs(steps, nodeById) {
+    var COL_W = 140, COL_GAP = 56, HEADER_H = 52, STEP_H = 64, TOP_PAD = 20, SIDE_PAD = 40;
+    var participants = [];
+    var seen = {};
+    steps.forEach(function(s) {
+        [s.from, s.to].forEach(function(nid) {
+            if (nid && !seen[nid]) { seen[nid] = true; participants.push(nid); }
+        });
+    });
+    var n = participants.length;
+    var W = 2 * SIDE_PAD + n * COL_W + Math.max(0, n - 1) * COL_GAP;
+    var H = TOP_PAD + HEADER_H + steps.length * STEP_H + 32;
+    var colCx = {};
+    participants.forEach(function(nid, i) {
+        colCx[nid] = SIDE_PAD + i * (COL_W + COL_GAP) + COL_W / 2;
+    });
+    var LIFE_TOP = TOP_PAD + HEADER_H, LIFE_BOT = H - 16;
+    var parts = ['<svg viewBox="0 0 ' + W + ' ' + H + '" style="display:block;width:100%;height:auto;max-height:600px">'];
+
+    participants.forEach(function(nid) {
+        var node = nodeById[nid] || {};
+        var cx = colCx[nid], x = cx - COL_W / 2;
+        var nst = SYS_NODE_STYLES[node.kind] || SYS_NODE_STYLES.__default__;
+        var label = sysEsc(node.label || nid);
+        var tech = sysEsc(node.tech || '');
+        parts.push('<rect x="' + x.toFixed(1) + '" y="' + TOP_PAD + '" width="' + COL_W + '" height="' + HEADER_H +
+            '" rx="8" fill="' + nst.fill + '" stroke="' + nst.stroke + '" stroke-width="1.5"/>');
+        var lblY = TOP_PAD + HEADER_H / 2 - (tech ? 6 : 0);
+        parts.push('<text x="' + cx.toFixed(1) + '" y="' + lblY.toFixed(1) +
+            '" text-anchor="middle" dominant-baseline="middle" font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">' +
+            nst.icon + ' ' + label + '</text>');
+        if (tech) {
+            parts.push('<text x="' + cx.toFixed(1) + '" y="' + (TOP_PAD + HEADER_H / 2 + 10).toFixed(1) +
+                '" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">' + tech + '</text>');
+        }
+        parts.push('<line x1="' + cx.toFixed(1) + '" y1="' + LIFE_TOP + '" x2="' + cx.toFixed(1) + '" y2="' + LIFE_BOT +
+            '" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>');
+    });
+
+    steps.forEach(function(step, i) {
+        var src = step.from, dst = step.to;
+        if (!(src in colCx) || !(dst in colCx)) return;
+        var sx = colCx[src], ex = colCx[dst];
+        var y = LIFE_TOP + (i + 0.5) * STEP_H;
+        var label = step.label || '';
+        var color = step.failure ? '#B04A3F' : '#D97757';
+
+        if (src === dst) {
+            var lx = sx + COL_W / 2 - 10;
+            parts.push('<path d="M' + sx.toFixed(1) + ',' + (y - 10).toFixed(1) + ' Q' + lx.toFixed(1) + ',' + (y - 10).toFixed(1) +
+                ' ' + lx.toFixed(1) + ',' + y.toFixed(1) + ' Q' + lx.toFixed(1) + ',' + (y + 10).toFixed(1) + ' ' +
+                sx.toFixed(1) + ',' + (y + 10).toFixed(1) + '" fill="none" stroke="' + color + '" stroke-width="1.5"/>');
+            if (label) {
+                parts.push('<text x="' + (lx + 6).toFixed(1) + '" y="' + (y + 3).toFixed(1) +
+                    '" font-family="ui-monospace,monospace" font-size="10" fill="' + color + '">' + sysEsc(label) + '</text>');
+            }
+            return;
+        }
+
+        var goingRight = ex > sx;
+        var arrowD = 7;
+        var bodyEx = goingRight ? ex - arrowD : ex + arrowD;
+        parts.push('<line x1="' + sx.toFixed(1) + '" y1="' + y.toFixed(1) + '" x2="' + bodyEx.toFixed(1) + '" y2="' + y.toFixed(1) +
+            '" stroke="' + color + '" stroke-width="1.5"/>');
+        var pts = goingRight
+            ? (ex + ',' + y + ' ' + (ex - arrowD) + ',' + (y - 4) + ' ' + (ex - arrowD) + ',' + (y + 4))
+            : (ex + ',' + y + ' ' + (ex + arrowD) + ',' + (y - 4) + ' ' + (ex + arrowD) + ',' + (y + 4));
+        parts.push('<polygon points="' + pts + '" fill="' + color + '"/>');
+
+        if (label) {
+            var mx = (sx + ex) / 2;
+            parts.push('<text x="' + mx.toFixed(1) + '" y="' + (y - 7).toFixed(1) +
+                '" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="' + color + '">' + sysEsc(label) + '</text>');
+        }
+        parts.push('<text x="' + (SIDE_PAD - 8).toFixed(1) + '" y="' + (y + 4).toFixed(1) +
+            '" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">' + (i + 1) + '</text>');
+    });
+
+    parts.push('</svg>');
+    return parts.join('');
+}
+
+function sysBehaviorRender() {
+    var dataEl = document.getElementById('sys-behavior-data');
+    var out = document.getElementById('sys-behavior-traces');
+    if (!dataEl || !out) return;
+    var data = JSON.parse(dataEl.textContent);
+    var sel = document.getElementById('sys-behavior-sel');
+    var failuresOnly = document.getElementById('sys-behavior-failures');
+    var scenario = (data.scenarios || []).find(function(s) { return s.id === (sel && sel.value); }) || (data.scenarios || [])[0];
+    if (!scenario) return;
+
+    var result = sysDeriveTraces(data.actions, scenario);
+    var traces = (failuresOnly && failuresOnly.checked) ? result.failed : result.completed.concat(result.failed);
+
+    var html = '';
+    if (!traces.length) {
+        html = '<p class="sys-mono" style="color:var(--gray-500);padding:20px 0">No traces derived for this scenario.</p>';
+    }
+    traces.forEach(function(trace, idx) {
+        var isFailure = result.failed.indexOf(trace) !== -1;
+        var steps = sysTraceToSteps(trace.history);
+        var svg = steps.length ? sysSeqSvgJs(steps, data.nodes) : '<p class="sys-mono" style="color:var(--gray-500)">No actions enabled from the initial state.</p>';
+        var finalFacts = Array.from(trace.state).sort();
+        var badge = isFailure
+            ? '<span class="sys-kbadge" style="color:#B04A3F;border-color:#B04A3F">dead end</span>'
+            : '<span class="sys-kbadge" style="color:#788C5D;border-color:#788C5D">goal reached</span>';
+        html += '<div class="sys-trace-panel">';
+        html += '<div class="sys-trace-header"><span class="sys-trace-title">Trace ' + (idx + 1) + '</span>' + badge + '</div>';
+        html += '<div class="sys-trace-diagram">' + svg + '</div>';
+        html += '<div class="sys-trace-facts"><span class="sys-eg-label">Facts true after trace</span><div class="sys-tags">' +
+            (finalFacts.length ? finalFacts.map(function(f) { return '<span class="sys-tag">' + sysEsc(f) + '</span>'; }).join('') : '<span class="sys-tag">(none)</span>') +
+            '</div></div>';
+        html += '</div>';
+    });
+    out.innerHTML = html;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('sys-behavior-data')) sysBehaviorRender();
+});
 """
 
 
@@ -1426,11 +1844,13 @@ def render_system_spec(data: dict) -> str:
 
     has_layers  = any(g.get("kind") == "layer" for g in spec["groups"])
     has_seqs    = bool(spec.get("sequences"))
+    has_behavior = bool(spec.get("actions"))
     has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in all_nodes)
     has_snippets = any(n.get("code_snippet") for n in all_nodes) or has_changes
 
     layer_svg    = render_layer_svg(spec) if has_layers else ""
     seq_html     = render_sequence_html(spec) if has_seqs else ""
+    behavior_html = render_behavior_html(spec) if has_behavior else ""
     code_detail_html = render_code_detail_html(spec)
     has_code_detail  = bool(code_detail_html)
     changes_html = render_changes_html(all_nodes) if has_changes else ""
@@ -1453,6 +1873,8 @@ def render_system_spec(data: dict) -> str:
         tabs += '<button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button>'
     if has_seqs:
         tabs += '<button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button>'
+    if has_behavior:
+        tabs += '<button class="sys-tab" data-view="behavior" onclick="sysTab(this)">Behavior</button>'
     if has_code_detail:
         tabs += '<button class="sys-tab" data-view="codedetail" onclick="sysTab(this)">Code Detail</button>'
     if has_changes:
@@ -1486,6 +1908,11 @@ def render_system_spec(data: dict) -> str:
   {seq_html}
 </div>""" if has_seqs else ""
 
+    behavior_view = f"""
+<div id="view-behavior" class="sys-view" style="display:none">
+  {behavior_html}
+</div>""" if has_behavior else ""
+
     code_detail_view = f"""
 <div id="view-codedetail" class="sys-view" style="display:none">
   {code_detail_html}
@@ -1506,17 +1933,20 @@ def render_system_spec(data: dict) -> str:
   {comp_list}
 </div>"""
 
+    js = _JS.replace("__NODE_KIND_STYLES__", _NODE_KIND_STYLES_JSON)
+
     body = f"""
 {desc_html}
 {tabs}
 {arch_view}
 {layer_view}
 {seq_view}
+{behavior_view}
 {code_detail_view}
 {changes_view}
 {matrix_view}
 {comp_view}
-<script>{_JS}</script>
+<script>{js}</script>
 """
 
     return page_wrapper(spec["title"], body, extra_css=_CSS, wide=True, extra_head=hljs_head)

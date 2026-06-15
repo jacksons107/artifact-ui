@@ -1,0 +1,100 @@
+{
+  "archetypes": [
+    {
+      "id": "db.default",
+      "applies_to_kind": "db",
+      "inject_outcomes": [
+        {
+          "id": "{component}_timeout",
+          "label": "{component_label}: request timed out",
+          "probability": "rare",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": ["{component}_unavailable"], "remove": [] }
+        },
+        {
+          "id": "{component}_unavailable",
+          "label": "{component_label}: unavailable",
+          "probability": "rare",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": ["{component}_unavailable"], "remove": [] }
+        },
+        {
+          "id": "{component}_stale_read",
+          "label": "{component_label}: returned a stale read",
+          "probability": "rare",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": ["{component}_stale"], "remove": [] }
+        }
+      ]
+    },
+    {
+      "id": "queue.default",
+      "applies_to_kind": "queue",
+      "inject_outcomes": [
+        {
+          "id": "{component}_message_lost",
+          "label": "{component_label}: message lost",
+          "probability": "rare",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": ["{component}_lost"], "remove": [] }
+        },
+        {
+          "id": "{component}_redelivered",
+          "label": "{component_label}: message redelivered",
+          "probability": "rare",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": ["{component}_duplicate"], "remove": [] }
+        }
+      ]
+    },
+    {
+      "id": "external.default",
+      "applies_to_kind": "external",
+      "inject_outcomes": [
+        {
+          "id": "{component}_unavailable",
+          "label": "{component_label}: service unavailable",
+          "probability": "rare",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": ["{component}_unavailable"], "remove": [] }
+        },
+        {
+          "id": "{component}_rate_limited",
+          "label": "{component_label}: rate limited",
+          "probability": "rare",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": ["{component}_rate_limited"], "remove": [] }
+        }
+      ]
+    },
+    {
+      "id": "cache.default",
+      "applies_to_kind": "cache",
+      "inject_outcomes": [
+        {
+          "id": "{component}_cache_miss",
+          "label": "{component_label}: cache miss",
+          "probability": "common",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": [], "remove": [] }
+        },
+        {
+          "id": "{component}_stale",
+          "label": "{component_label}: returned stale value",
+          "probability": "rare",
+          "requires": [],
+          "emits": [],
+          "effects": { "add": ["{component}_stale"], "remove": [] }
+        }
+      ]
+    }
+  ]
+}

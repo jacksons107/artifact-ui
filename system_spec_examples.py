@@ -298,6 +298,125 @@ EXAMPLES = {
                     {"from": "gateway", "to": "client",  "label": "200 OK + tokens"},
                 ]
             }
+        ],
+        "data_types": [
+            {"id": "LoginRequest",    "label": "LoginRequest",    "fields": ["username", "password"]},
+            {"id": "AuthenticatedUser", "label": "AuthenticatedUser", "fields": ["user_id", "roles"]},
+            {"id": "SessionToken",    "label": "SessionToken",    "fields": ["jwt", "expires_at"]},
+            {"id": "AuthError",       "label": "AuthError",       "fields": ["reason"]},
+            {"id": "Order",           "label": "Order",           "fields": ["order_id", "items", "total"]},
+            {"id": "OrderPlaced",     "label": "OrderPlaced",     "fields": ["order_id"]},
+        ],
+        "facts": [
+            {"id": "authenticated",     "label": "User is authenticated",          "initial": False},
+            {"id": "auth_failed",       "label": "Last authentication attempt failed", "initial": False},
+            {"id": "payment_complete",  "label": "Payment has been captured",      "initial": False},
+            {"id": "inventory_reserved","label": "Inventory has been reserved for the order", "initial": False},
+            {"id": "order_placed",      "label": "Order has been placed",          "initial": False},
+        ],
+        "actions": [
+            {
+                "id": "AuthenticateUser",
+                "label": "Authenticate User",
+                "component": "users",
+                "touches": ["users", "userdb"],
+                "inputs": ["LoginRequest"],
+                "preconditions": [],
+                "outcomes": [
+                    {
+                        "id": "success",
+                        "label": "Valid credentials",
+                        "probability": "common",
+                        "requires": [],
+                        "emits": ["AuthenticatedUser", "SessionToken"],
+                        "effects": {"add": ["authenticated"], "remove": ["auth_failed"]}
+                    },
+                    {
+                        "id": "invalid_credentials",
+                        "label": "Invalid username or password",
+                        "probability": "uncommon",
+                        "requires": [],
+                        "emits": ["AuthError"],
+                        "effects": {"add": ["auth_failed"], "remove": []}
+                    }
+                ]
+            },
+            {
+                "id": "CreateOrder",
+                "label": "Create Order",
+                "component": "orders",
+                "touches": ["orders", "orderdb"],
+                "inputs": ["Order"],
+                "preconditions": ["authenticated"],
+                "outcomes": [
+                    {
+                        "id": "success",
+                        "label": "Order persisted",
+                        "probability": "common",
+                        "requires": [],
+                        "emits": ["OrderPlaced"],
+                        "effects": {"add": ["order_placed"], "remove": []}
+                    }
+                ]
+            },
+            {
+                "id": "ReserveInventory",
+                "label": "Reserve Inventory",
+                "component": "inventory",
+                "touches": ["inventory", "invdb"],
+                "inputs": ["OrderPlaced"],
+                "preconditions": ["order_placed"],
+                "outcomes": [
+                    {
+                        "id": "success",
+                        "label": "Stock reserved",
+                        "probability": "common",
+                        "requires": [],
+                        "emits": [],
+                        "effects": {"add": ["inventory_reserved"], "remove": []}
+                    }
+                ]
+            },
+            {
+                "id": "ChargePayment",
+                "label": "Charge Payment",
+                "component": "payments",
+                "touches": ["payments", "paydb", "stripe"],
+                "inputs": ["Order"],
+                "preconditions": ["order_placed", "inventory_reserved"],
+                "outcomes": [
+                    {
+                        "id": "success",
+                        "label": "Card charged",
+                        "probability": "common",
+                        "requires": [],
+                        "emits": [],
+                        "effects": {"add": ["payment_complete"], "remove": []}
+                    },
+                    {
+                        "id": "declined",
+                        "label": "Card declined",
+                        "probability": "uncommon",
+                        "requires": [],
+                        "emits": [],
+                        "effects": {"add": [], "remove": []}
+                    }
+                ]
+            }
+        ],
+        "scenarios": [
+            {
+                "id": "login-success",
+                "label": "Login → authenticated",
+                "initial_facts": [],
+                "goal_fact": "authenticated"
+            },
+            {
+                "id": "order-to-payment",
+                "label": "Order placement → payment captured",
+                "initial_facts": ["authenticated"],
+                "goal_fact": "payment_complete"
+            }
         ]
     },
 
