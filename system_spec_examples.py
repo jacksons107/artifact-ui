@@ -1,5 +1,51 @@
 EXAMPLES = {
 
+    "sys_behavioral_auth": {
+        "title": "Auth Flow — Behavioral Model",
+        "description": "Login flow modeled with data objects, behavioral actions, failure modes, and invariants. See Dataflow/Sequences/Scenarios/Invariants/Query tabs for derived views.",
+        "nodes": [
+            {"id": "client", "label": "Web Client", "kind": "external"},
+            {"id": "auth_service", "label": "Auth Service", "kind": "service", "tech": "Go"},
+            {"id": "auth_db", "label": "Auth DB", "kind": "db", "tech": "Postgres",
+             "failure_modes": ["unavailable", "stale_read"]},
+            {"id": "session_cache", "label": "Session Cache", "kind": "cache", "tech": "Redis",
+             "failure_modes": ["unavailable"]}
+        ],
+        "edges": [
+            {"from": "client", "to": "auth_service", "kind": "calls", "label": "POST /login"},
+            {"from": "auth_service", "to": "auth_db", "kind": "reads", "label": "lookup user"},
+            {"from": "auth_service", "to": "session_cache", "kind": "writes", "label": "store session"}
+        ],
+        "data": [
+            {"id": "LoginRequest", "label": "Login Request",
+             "schema": {"username": "string", "password": "string"},
+             "example": {"username": "jdoe", "password": "***"}},
+            {"id": "AuthenticatedUser", "label": "Authenticated User",
+             "schema": {"user_id": "string", "roles": "string[]"},
+             "example": {"user_id": "u_123", "roles": ["member"]}},
+            {"id": "Session", "label": "Session",
+             "schema": {"session_id": "string", "user_id": "string"},
+             "example": {"session_id": "sess_abc", "user_id": "u_123"}}
+        ],
+        "actions": [
+            {"id": "validate_credentials", "label": "Validate Credentials", "node": "auth_service",
+             "consumes": ["LoginRequest"], "produces": ["AuthenticatedUser"],
+             "reads": ["auth_db"], "tags": ["auth"]},
+            {"id": "create_session", "label": "Create Session", "node": "auth_service",
+             "consumes": ["AuthenticatedUser"], "produces": ["Session"],
+             "writes": ["session_cache"], "tags": ["auth", "session"]}
+        ],
+        "invariants": [
+            {"id": "auth_before_db_read", "label": "DB reads require authentication first",
+             "rule": {"type": "precedes", "before": {"tag": "auth"}, "after": {"node": "auth_db", "edge_kind": "reads"}},
+             "severity": "high"},
+            {"id": "session_requires_auth", "label": "Sessions cannot be created without authentication",
+             "rule": {"type": "requires", "before": {"action": "validate_credentials"}, "after": {"action": "create_session"}},
+             "severity": "high"}
+        ],
+        "initial_tokens": ["LoginRequest"]
+    },
+
     "code_impl_plan": {
         "title": "Auth — JWT Refresh Token Rotation",
         "description": "Implementation plan for adding refresh token rotation to the auth module. Green nodes are new; amber nodes are modified. Click any node to see its signature and code.",

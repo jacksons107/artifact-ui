@@ -1,19 +1,25 @@
 import html as _html
+import json
 from collections import defaultdict, deque
+
 from design_system import page_wrapper
+from system_spec_ir import validate_spec, compile_ir, has_behavioral
+from system_spec_ir_js import IR_JS
 
 # ── Visual vocabulary ─────────────────────────────────────────────────────────
 
 NODE_KIND_STYLES = {
-    "service":  {"stroke": "#D97757", "fill": "rgba(217,119,87,0.07)",  "icon": "◈"},
-    "db":       {"stroke": "#788C5D", "fill": "rgba(120,140,93,0.07)",  "icon": "⬡"},
-    "queue":    {"stroke": "#B04A3F", "fill": "rgba(176,74,63,0.07)",   "icon": "≋"},
-    "external": {"stroke": "#87867F", "fill": "rgba(135,134,127,0.07)", "icon": "◇"},
-    "module":   {"stroke": "#87867F", "fill": "rgba(135,134,127,0.05)", "icon": "□"},
-    "class":    {"stroke": "#D1CFC5", "fill": "#FFFFFF",                "icon": "⟨⟩"},
-    "function": {"stroke": "#D1CFC5", "fill": "#FFFFFF",                "icon": "ƒ"},
-    "package":  {"stroke": "#87867F", "fill": "rgba(135,134,127,0.05)", "icon": "⊡"},
-    "file":     {"stroke": "#D1CFC5", "fill": "#FFFFFF",                "icon": "≡"},
+    "service":     {"stroke": "#D97757", "fill": "rgba(217,119,87,0.07)",  "icon": "◈"},
+    "http_service":{"stroke": "#D97757", "fill": "rgba(217,119,87,0.07)",  "icon": "◈"},
+    "db":          {"stroke": "#788C5D", "fill": "rgba(120,140,93,0.07)",  "icon": "⬡"},
+    "cache":       {"stroke": "#788C5D", "fill": "rgba(120,140,93,0.04)",  "icon": "◫"},
+    "queue":       {"stroke": "#B04A3F", "fill": "rgba(176,74,63,0.07)",   "icon": "≋"},
+    "external":    {"stroke": "#87867F", "fill": "rgba(135,134,127,0.07)", "icon": "◇"},
+    "module":      {"stroke": "#87867F", "fill": "rgba(135,134,127,0.05)", "icon": "□"},
+    "class":       {"stroke": "#D1CFC5", "fill": "#FFFFFF",                "icon": "⟨⟩"},
+    "function":    {"stroke": "#D1CFC5", "fill": "#FFFFFF",                "icon": "ƒ"},
+    "package":     {"stroke": "#87867F", "fill": "rgba(135,134,127,0.05)", "icon": "⊡"},
+    "file":        {"stroke": "#D1CFC5", "fill": "#FFFFFF",                "icon": "≡"},
 }
 
 _DEFAULT_NODE_STYLE = {"stroke": "#D1CFC5", "fill": "#FFFFFF", "icon": "○"}
@@ -76,87 +82,6 @@ NODE_H = 60
 H_GAP  = 56
 V_GAP  = 72
 PAD    = 56
-
-
-# ── Validation ────────────────────────────────────────────────────────────────
-
-def _validate_nodes_edges(nodes: list, edges: list, context: str) -> set:
-    node_ids = set()
-    for i, node in enumerate(nodes):
-        if "id" not in node:
-            raise ValueError(f"{context}nodes[{i}] is missing required field 'id'.")
-        if "label" not in node:
-            raise ValueError(f"{context}nodes[{i}] (id={node['id']!r}) is missing required field 'label'.")
-        if node["id"] in node_ids:
-            raise ValueError(f"{context}nodes[{i}]: duplicate node id {node['id']!r}.")
-        node_ids.add(node["id"])
-
-    for i, edge in enumerate(edges):
-        src = edge.get("from")
-        dst = edge.get("to")
-        if src is None:
-            raise ValueError(f"{context}edges[{i}] is missing required field 'from'.")
-        if dst is None:
-            raise ValueError(f"{context}edges[{i}] is missing required field 'to'.")
-        if src not in node_ids:
-            raise ValueError(f"{context}edges[{i}]: 'from' references unknown node id {src!r}.")
-        if dst not in node_ids:
-            raise ValueError(f"{context}edges[{i}]: 'to' references unknown node id {dst!r}.")
-
-    return node_ids
-
-
-def parse_spec(data: dict) -> dict:
-    title  = data.get("title", "Untitled System")
-    nodes  = data.get("nodes", [])
-    edges  = data.get("edges", [])
-    groups = data.get("groups", [])
-    seqs   = data.get("sequences", [])
-
-    if not nodes:
-        raise ValueError("system_spec requires at least one node in 'nodes'.")
-
-    node_ids = _validate_nodes_edges(nodes, edges, "")
-
-    for i, group in enumerate(groups):
-        if "id" not in group:
-            raise ValueError(f"groups[{i}] is missing required field 'id'.")
-        if "label" not in group:
-            raise ValueError(f"groups[{i}] (id={group['id']!r}) is missing required field 'label'.")
-        for member in group.get("members", []):
-            if member not in node_ids:
-                raise ValueError(
-                    f"groups[{i}] (id={group['id']!r}): member {member!r} is not a known node id."
-                )
-        detail = group.get("detail")
-        if detail:
-            _validate_nodes_edges(
-                detail.get("nodes", []), detail.get("edges", []),
-                f"groups[{i}] (id={group['id']!r}).detail."
-            )
-
-    for i, seq in enumerate(seqs):
-        if "id" not in seq:
-            raise ValueError(f"sequences[{i}] is missing required field 'id'.")
-        if "label" not in seq:
-            raise ValueError(f"sequences[{i}] (id={seq['id']!r}) is missing required field 'label'.")
-        for j, step in enumerate(seq.get("steps", [])):
-            for field in ("from", "to"):
-                val = step.get(field)
-                if val and val not in node_ids:
-                    raise ValueError(
-                        f"sequences[{i}].steps[{j}]: {field!r} references unknown node id {val!r}."
-                    )
-
-    return {
-        "title":       title,
-        "description": data.get("description", ""),
-        "nodes":       nodes,
-        "edges":       edges,
-        "groups":      groups,
-        "sequences":   seqs,
-        "node_ids":    node_ids,
-    }
 
 
 # ── Layout ────────────────────────────────────────────────────────────────────
@@ -441,7 +366,7 @@ def render_detail_panels(spec: dict, id_prefix: str = "") -> str:
                 html += f'<dt>{k}</dt><dd>{_e(v)}</dd>'
             html += '</dl>'
 
-        tags = node.get("tags", [])
+        tags = node.get("tags", []) or node.get("failure_modes", [])
         if tags:
             html += '<div class="sys-tags">'
             for tag in tags:
@@ -525,351 +450,6 @@ def render_legend(spec: dict) -> str:
 
     parts.append('</div>')
     return "".join(parts)
-
-
-# ── Layer diagram ────────────────────────────────────────────────────────────
-
-_LANE_LABEL_W = 108
-_LANE_NODE_W  = 160
-_LANE_NODE_H  = 52
-_LANE_H_GAP   = 20
-_LANE_PAD_X   = 24
-_LANE_PAD_Y   = 14
-_LANE_GAP     = 14
-
-
-def render_layer_svg(spec: dict) -> str:
-    nodes  = spec["nodes"]
-    edges  = spec["edges"]
-    groups = spec["groups"]
-
-    layer_groups = [g for g in groups if g.get("kind") == "layer"]
-    if not layer_groups:
-        return ""
-
-    node_by_id = {n["id"]: n for n in nodes}
-
-    # Nodes in at least one layer group
-    in_layer: set[str] = set()
-    for g in layer_groups:
-        in_layer.update(m for m in g.get("members", []) if m in node_by_id)
-
-    # Ungrouped nodes get their own lane
-    ungrouped = [n["id"] for n in nodes if n["id"] not in in_layer]
-    lanes = list(layer_groups)
-    if ungrouped:
-        lanes.append({"id": "_other", "label": "Other", "kind": "layer", "members": ungrouped})
-
-    # Compute max nodes in any lane → SVG width
-    max_n = max((len([m for m in g.get("members", []) if m in node_by_id or m in [n["id"] for n in nodes]]) for g in lanes), default=1)
-    content_w = max_n * _LANE_NODE_W + max(0, max_n - 1) * _LANE_H_GAP
-    SVG_W = _LANE_LABEL_W + 2 * _LANE_PAD_X + content_w
-    LANE_H = _LANE_NODE_H + 2 * _LANE_PAD_Y
-
-    # Assign positions
-    node_pos: dict[str, dict] = {}
-    node_lane_idx: dict[str, int] = {}
-    valid_lanes = []
-
-    for lane_idx, lane in enumerate(lanes):
-        members = [m for m in lane.get("members", []) if m in node_by_id]
-        if not members:
-            continue
-        valid_lanes.append(lane)
-        y_top = len(valid_lanes) * _LANE_GAP + (len(valid_lanes) - 1) * LANE_H
-        n = len(members)
-        total_w = n * _LANE_NODE_W + max(0, n - 1) * _LANE_H_GAP
-        start_x = _LANE_LABEL_W + _LANE_PAD_X + (content_w - total_w) / 2
-        for i, nid in enumerate(members):
-            x = start_x + i * (_LANE_NODE_W + _LANE_H_GAP)
-            y = y_top + _LANE_PAD_Y
-            node_pos[nid] = {"x": x, "y": y, "w": _LANE_NODE_W, "h": _LANE_NODE_H}
-            node_lane_idx[nid] = len(valid_lanes) - 1
-
-    if not valid_lanes:
-        return ""
-
-    SVG_H = len(valid_lanes) * (LANE_H + _LANE_GAP) + _LANE_GAP
-
-    parts = [
-        f'<svg viewBox="0 0 {SVG_W:.0f} {SVG_H:.0f}" '
-        f'style="display:block;width:100%;height:auto;max-height:700px" id="sys-layer-svg">'
-    ]
-    parts.append('<defs>')
-    parts.append(
-        '<marker id="larr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
-        '<path d="M0,0 L0,7 L7,3.5 z" fill="#C8C5BC"/></marker>'
-    )
-    parts.append('</defs>')
-
-    # Lane bands
-    for li, lane in enumerate(valid_lanes):
-        y_top = _LANE_GAP + li * (LANE_H + _LANE_GAP)
-        gst   = GROUP_KIND_STYLES.get(lane.get("kind", ""), _DEFAULT_GROUP_STYLE)
-        label = _e(lane.get("label", lane["id"]))
-        parts.append(
-            f'<rect x="0" y="{y_top:.1f}" width="{SVG_W:.0f}" height="{LANE_H}" rx="8" '
-            f'fill="{gst["fill"]}" stroke="{gst["stroke"]}" stroke-width="1"/>'
-        )
-        # Vertical separator
-        parts.append(
-            f'<line x1="{_LANE_LABEL_W}" y1="{y_top:.1f}" '
-            f'x2="{_LANE_LABEL_W}" y2="{y_top+LANE_H:.1f}" '
-            f'stroke="{gst["stroke"]}" stroke-width="0.5" opacity="0.35"/>'
-        )
-        # Lane label
-        parts.append(
-            f'<text x="{_LANE_LABEL_W/2:.1f}" y="{y_top+LANE_H/2:.1f}" '
-            f'text-anchor="middle" dominant-baseline="middle" '
-            f'font-family="ui-monospace,monospace" font-size="11" '
-            f'fill="{gst["stroke"]}" font-weight="500">{label}</text>'
-        )
-
-    # Edges (cross-lane only — same-lane as small arcs)
-    for edge in edges:
-        src, dst = edge.get("from"), edge.get("to")
-        if src not in node_pos or dst not in node_pos or src == dst:
-            continue
-        sp, dp     = node_pos[src], node_pos[dst]
-        src_li     = node_lane_idx[src]
-        dst_li     = node_lane_idx[dst]
-
-        if src_li == dst_li:
-            # Same lane: subtle arc above nodes
-            sx = sp["x"] + sp["w"] / 2
-            sy = sp["y"]
-            ex = dp["x"] + dp["w"] / 2
-            ey = dp["y"]
-            mx = (sx + ex) / 2
-            arc_y = sy - 16
-            parts.append(
-                f'<path d="M{sx:.1f},{sy:.1f} Q{mx:.1f},{arc_y:.1f} {ex:.1f},{ey:.1f}" '
-                f'fill="none" stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,3" '
-                f'marker-end="url(#larr)"/>'
-            )
-        else:
-            # Cross-lane: bezier from bottom to top
-            sx       = sp["x"] + sp["w"] / 2
-            sy       = sp["y"] + sp["h"]
-            ex       = dp["x"] + dp["w"] / 2
-            ey       = dp["y"]
-            dy       = ey - sy
-            cx1, cy1 = sx, sy + dy * 0.4
-            cx2, cy2 = ex, ey - dy * 0.4
-            parts.append(
-                f'<path d="M{sx:.1f},{sy:.1f} C{cx1:.1f},{cy1:.1f} {cx2:.1f},{cy2:.1f} {ex:.1f},{ey:.1f}" '
-                f'fill="none" stroke="#C8C5BC" stroke-width="1.3" marker-end="url(#larr)"/>'
-            )
-            label = edge.get("label", "")
-            if label:
-                mx = (sx + ex) / 2
-                my = (sy + ey) / 2
-                lw = len(label) * 5.4 + 8
-                parts.append(
-                    f'<rect x="{mx-lw/2:.1f}" y="{my-8:.1f}" width="{lw:.1f}" height="13" rx="3" '
-                    f'fill="rgba(250,249,245,0.9)"/>'
-                )
-                parts.append(
-                    f'<text x="{mx:.1f}" y="{my+2:.1f}" text-anchor="middle" '
-                    f'font-family="ui-monospace,monospace" font-size="9" fill="#87867F">'
-                    f'{_e(label)}</text>'
-                )
-
-    # Nodes
-    for nid, p in node_pos.items():
-        node = node_by_id[nid]
-        x, y, w, h = p["x"], p["y"], p["w"], p["h"]
-        kind  = node.get("kind", "")
-        nst   = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
-        label = _e(node.get("label", nid))
-        tech  = _e(node.get("tech", ""))
-        parts.append(
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="{w}" height="{h}" rx="8" '
-            f'fill="{nst["fill"]}" stroke="{nst["stroke"]}" stroke-width="1.5"/>'
-        )
-        label_y = f"{y + h/2 - (6 if tech else 0):.1f}"
-        parts.append(
-            f'<text x="{x + w/2:.1f}" y="{label_y}" text-anchor="middle" dominant-baseline="middle" '
-            f'font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">'
-            f'{nst["icon"]} {label}</text>'
-        )
-        if tech:
-            parts.append(
-                f'<text x="{x + w/2:.1f}" y="{y + h/2 + 10:.1f}" text-anchor="middle" '
-                f'font-family="ui-monospace,monospace" font-size="10" fill="#87867F">'
-                f'{tech}</text>'
-            )
-
-    parts.append("</svg>")
-    return "\n".join(parts)
-
-
-# ── Sequence diagram ─────────────────────────────────────────────────────────
-
-_SEQ_COL_W    = 140
-_SEQ_COL_GAP  = 56
-_SEQ_HEADER_H = 52
-_SEQ_STEP_H   = 64
-_SEQ_TOP_PAD  = 20
-_SEQ_SIDE_PAD = 40
-
-
-def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
-    steps = seq.get("steps", [])
-    if not steps:
-        return ""
-
-    # Collect participants in order of first appearance
-    seen: dict[str, bool] = {}
-    participants: list[str] = []
-    for step in steps:
-        for fld in ("from", "to"):
-            nid = step.get(fld)
-            if nid and nid not in seen:
-                seen[nid] = True
-                participants.append(nid)
-
-    n     = len(participants)
-    SVG_W = 2 * _SEQ_SIDE_PAD + n * _SEQ_COL_W + max(0, n - 1) * _SEQ_COL_GAP
-    SVG_H = _SEQ_TOP_PAD + _SEQ_HEADER_H + len(steps) * _SEQ_STEP_H + 32
-
-    # Center-x per participant
-    col_cx: dict[str, float] = {}
-    for i, nid in enumerate(participants):
-        col_cx[nid] = _SEQ_SIDE_PAD + i * (_SEQ_COL_W + _SEQ_COL_GAP) + _SEQ_COL_W / 2
-
-    LIFELINE_TOP = _SEQ_TOP_PAD + _SEQ_HEADER_H
-    LIFELINE_BOT = SVG_H - 16
-
-    parts = [
-        f'<svg viewBox="0 0 {SVG_W:.0f} {SVG_H:.0f}" '
-        f'style="display:block;width:100%;height:auto;max-height:720px">'
-    ]
-
-    # Participant boxes and lifelines
-    for nid in participants:
-        node = node_by_id.get(nid, {})
-        cx   = col_cx[nid]
-        x    = cx - _SEQ_COL_W / 2
-        kind = node.get("kind", "")
-        nst  = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
-        label = _e(node.get("label", nid))
-        tech  = _e(node.get("tech", ""))
-
-        parts.append(
-            f'<rect x="{x:.1f}" y="{_SEQ_TOP_PAD}" width="{_SEQ_COL_W}" height="{_SEQ_HEADER_H}" rx="8" '
-            f'fill="{nst["fill"]}" stroke="{nst["stroke"]}" stroke-width="1.5"/>'
-        )
-        lbl_y = _SEQ_TOP_PAD + _SEQ_HEADER_H / 2 - (6 if tech else 0)
-        parts.append(
-            f'<text x="{cx:.1f}" y="{lbl_y:.1f}" text-anchor="middle" dominant-baseline="middle" '
-            f'font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">'
-            f'{nst["icon"]} {label}</text>'
-        )
-        if tech:
-            parts.append(
-                f'<text x="{cx:.1f}" y="{_SEQ_TOP_PAD + _SEQ_HEADER_H / 2 + 10:.1f}" '
-                f'text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">'
-                f'{tech}</text>'
-            )
-        # Lifeline
-        parts.append(
-            f'<line x1="{cx:.1f}" y1="{LIFELINE_TOP}" x2="{cx:.1f}" y2="{LIFELINE_BOT}" '
-            f'stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>'
-        )
-
-    # Steps
-    for i, step in enumerate(steps):
-        src = step.get("from")
-        dst = step.get("to")
-        if not src or not dst or src not in col_cx or dst not in col_cx:
-            continue
-
-        sx    = col_cx[src]
-        ex    = col_cx[dst]
-        y     = LIFELINE_TOP + (i + 0.5) * _SEQ_STEP_H
-        label = step.get("label", "")
-
-        if src == dst:
-            # Self-loop: small arc to the right
-            r  = 20
-            lx = sx + _SEQ_COL_W / 2 - 10
-            parts.append(
-                f'<path d="M{sx:.1f},{y-10:.1f} Q{lx:.1f},{y-10:.1f} {lx:.1f},{y:.1f} '
-                f'Q{lx:.1f},{y+10:.1f} {sx:.1f},{y+10:.1f}" '
-                f'fill="none" stroke="#D97757" stroke-width="1.5"/>'
-            )
-            if label:
-                parts.append(
-                    f'<text x="{lx+6:.1f}" y="{y+3:.1f}" '
-                    f'font-family="ui-monospace,monospace" font-size="10" fill="#D97757">'
-                    f'{_e(label)}</text>'
-                )
-            continue
-
-        going_right = ex > sx
-
-        # Draw line body (stops short to leave room for arrowhead)
-        tip_x   = ex
-        arrow_d = 7
-        body_ex = ex - arrow_d if going_right else ex + arrow_d
-        parts.append(
-            f'<line x1="{sx:.1f}" y1="{y:.1f}" x2="{body_ex:.1f}" y2="{y:.1f}" '
-            f'stroke="#D97757" stroke-width="1.5"/>'
-        )
-
-        # Explicit arrowhead polygon (avoids SVG marker rotation ambiguity)
-        if going_right:
-            pts = f"{tip_x},{y} {tip_x-arrow_d},{y-4} {tip_x-arrow_d},{y+4}"
-        else:
-            pts = f"{tip_x},{y} {tip_x+arrow_d},{y-4} {tip_x+arrow_d},{y+4}"
-        parts.append(f'<polygon points="{pts}" fill="#D97757"/>')
-
-        # Step label above the arrow
-        if label:
-            mx = (sx + ex) / 2
-            parts.append(
-                f'<text x="{mx:.1f}" y="{y - 7:.1f}" text-anchor="middle" '
-                f'font-family="ui-monospace,monospace" font-size="10" fill="#D97757">'
-                f'{_e(label)}</text>'
-            )
-
-        # Step index at left margin
-        parts.append(
-            f'<text x="{_SEQ_SIDE_PAD - 8:.1f}" y="{y + 4:.1f}" text-anchor="end" '
-            f'font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">{i+1}</text>'
-        )
-
-    parts.append("</svg>")
-    return "\n".join(parts)
-
-
-def render_sequence_html(spec: dict) -> str:
-    sequences = spec.get("sequences", [])
-    if not sequences:
-        return ""
-
-    node_by_id = {n["id"]: n for n in spec["nodes"]}
-    first_id   = sequences[0]["id"]
-
-    html  = '<div class="sys-seq-wrap">'
-    html += '<div class="sys-seq-controls">'
-    html += '<span class="sys-fl">Sequence</span>'
-    html += '<select class="sys-seq-sel" onchange="sysSeqChange(this)">'
-    for seq in sequences:
-        html += f'<option value="{_e(seq["id"])}">{_e(seq["label"])}</option>'
-    html += '</select>'
-    html += '</div>'
-
-    html += '<div class="sys-seq-diagrams">'
-    for i, seq in enumerate(sequences):
-        display = '' if i == 0 else 'style="display:none"'
-        svg = _render_seq_svg(seq, node_by_id)
-        html += f'<div id="seqp-{_e(seq["id"])}" class="sys-seq-panel" {display}>{svg}</div>'
-    html += '</div>'
-
-    html += '</div>'
-    return html
 
 
 # ── Dependency matrix ─────────────────────────────────────────────────────────
@@ -1048,50 +628,6 @@ def render_filter_bar(spec: dict) -> str:
     return html
 
 
-# ── Code detail tab ───────────────────────────────────────────────────────────
-
-def render_code_detail_html(spec: dict) -> str:
-    detail_groups = [g for g in spec["groups"] if g.get("detail", {}).get("nodes")]
-    if not detail_groups:
-        return ""
-
-    html = '<div class="sys-cd-wrap"><div class="sys-cd-controls">'
-    html += '<span class="sys-fl">Module</span>'
-    html += '<select class="sys-cd-sel" onchange="sysCodeDetailChange(this)">'
-    for g in detail_groups:
-        html += f'<option value="{_e(g["id"])}">{_e(g.get("label", g["id"]))}</option>'
-    html += '</select>'
-    html += '</div>'
-
-    for i, g in enumerate(detail_groups):
-        detail = g["detail"]
-        sub = parse_spec({
-            "title": g.get("label", g["id"]),
-            "nodes": detail["nodes"],
-            "edges": detail.get("edges", []),
-        })
-        positions = layout_graph(sub["nodes"], sub["edges"], [])
-        prefix = f'cd-{g["id"]}-'
-        svg    = render_architecture_svg(sub, positions, id_prefix=prefix)
-        panels = render_detail_panels(sub, id_prefix=prefix)
-        legend = render_legend(sub)
-
-        display = '' if i == 0 else ' style="display:none"'
-        html += f'<div id="cdp-{_e(g["id"])}" class="sys-cd-panel"{display}>'
-        html += '<div class="sys-wrap">'
-        html += '<div class="sys-main"><div class="sys-diagram">' + svg + '</div></div>'
-        html += '<div class="sys-sidebar">'
-        html += '<div class="sys-hint">Click a node<br>to see details</div>'
-        html += panels
-        html += legend
-        html += '</div>'
-        html += '</div>'
-        html += '</div>'
-
-    html += '</div>'
-    return html
-
-
 # ── Changes tab ──────────────────────────────────────────────────────────────
 
 def render_changes_html(nodes: list) -> str:
@@ -1173,7 +709,7 @@ def render_changes_html(nodes: list) -> str:
 
 _CSS = """
 /* ── Tabs ─────────────────────────────────────── */
-.sys-tabs { display: flex; gap: 0; border-bottom: 1.5px solid var(--gray-300); margin-bottom: 20px; }
+.sys-tabs { display: flex; gap: 0; border-bottom: 1.5px solid var(--gray-300); margin-bottom: 20px; flex-wrap: wrap; }
 .sys-tab { font-family: var(--mono); font-size: 12px; background: none; border: none;
            padding: 7px 16px; cursor: pointer; color: var(--gray-500);
            border-bottom: 2px solid transparent; margin-bottom: -1.5px; transition: color 0.1s; }
@@ -1217,6 +753,7 @@ _CSS = """
 .sys-node:hover .sys-nr { filter: brightness(0.94); }
 .sys-node.active .sys-nr { stroke-width: 2.5px !important; filter: brightness(0.91); }
 .sys-node.filtered-out { opacity: 0.12; pointer-events: none; }
+.sys-node.sys-anim-active .sys-nr { stroke: #D97757 !important; stroke-width: 3px !important; filter: brightness(0.95); }
 
 /* ── Hint / placeholder ───────────────────────── */
 .sys-hint { color: var(--gray-500); font-size: 12px; text-align: center; padding: 32px 16px;
@@ -1244,25 +781,6 @@ _CSS = """
 .sys-cr:hover td { background: var(--gray-100); }
 .sys-mono { font-family: var(--mono); font-size: 12px; color: var(--gray-700); }
 .sys-dc { font-size: 12px; color: var(--gray-500); max-width: 280px; }
-
-/* ── Layer diagram view ───────────────────────── */
-.sys-layer-wrap { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
-
-/* ── Sequence diagram view ────────────────────── */
-.sys-seq-wrap { display: flex; flex-direction: column; gap: 14px; }
-.sys-seq-controls { display: flex; align-items: center; gap: 10px; }
-.sys-seq-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
-               padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
-               appearance: none; -webkit-appearance: none; }
-.sys-seq-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
-
-/* ── Code detail view ──────────────────────────── */
-.sys-cd-wrap { display: flex; flex-direction: column; gap: 14px; }
-.sys-cd-controls { display: flex; align-items: center; gap: 10px; }
-.sys-cd-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
-              padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
-              appearance: none; -webkit-appearance: none; }
-.sys-cd-panel { display: flex; flex-direction: column; gap: 12px; }
 
 /* ── Dependency matrix ────────────────────────── */
 .sys-matrix-wrap { overflow-x: auto; background: var(--white); border: var(--border); border-radius: 12px; }
@@ -1305,6 +823,32 @@ _CSS = """
 .sys-chg-diff { display: flex; gap: 12px; flex-wrap: wrap; }
 .sys-chg-side { flex: 1 1 340px; display: flex; flex-direction: column; gap: 4px; }
 .sys-chg-side-label { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* ── Dataflow / Sequences / Scenarios / Invariants / Query (semantic IR) ── */
+.sys-seq-wrap { display: flex; flex-direction: column; gap: 14px; }
+.sys-seq-controls { display: flex; align-items: center; gap: 10px; }
+.sys-seq-sel, .sys-cd-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
+               padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
+               appearance: none; -webkit-appearance: none; }
+.sys-seq-panel, .sys-diagram-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+.sys-anim-info { font-family: var(--mono); font-size: 11px; color: var(--gray-500); min-height: 16px; }
+.sys-scenario-row { background: var(--white); border: var(--border); border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: background 0.1s; }
+.sys-scenario-row:hover { background: var(--gray-100); }
+.sys-scenario-trace { font-family: var(--mono); font-size: 11px; color: var(--gray-700); margin-top: 4px; word-break: break-word; }
+.sys-scenarios-list, .sys-invariants-list, .sys-query-results { display: flex; flex-direction: column; gap: 10px; }
+.sys-tags-inline { margin-left: 8px; }
+.sys-tags-inline .sys-tag { margin-right: 4px; }
+.sys-invariant-row { background: var(--white); border: var(--border); border-radius: 10px; padding: 12px 14px; }
+.sys-invariant-row.sys-inv-fail { border-color: #B04A3F; }
+.sys-invariant-row.sys-inv-pass { border-color: #4A7C59; }
+.sys-inv-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sys-inv-status { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 4px; }
+.sys-inv-pass .sys-inv-status { color: #4A7C59; background: rgba(74,124,89,0.10); }
+.sys-inv-fail .sys-inv-status { color: #B04A3F; background: rgba(176,74,63,0.10); }
+.sys-inv-animate { margin-top: 8px; }
+.sys-query-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.sys-query-input { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px; padding: 6px 10px; flex: 1 1 320px; background: var(--white); color: var(--slate); }
+.sys-query-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
 """
 
 _JS = """
@@ -1367,22 +911,6 @@ function _applyArchFilter() {
     });
 }
 
-/* ── Sequence selector ─────────────────────────── */
-function sysSeqChange(sel) {
-    var val = sel.value;
-    document.querySelectorAll('.sys-seq-panel').forEach(function(p) {
-        p.style.display = (p.id === 'seqp-' + val) ? '' : 'none';
-    });
-}
-
-/* ── Code detail selector ──────────────────────── */
-function sysCodeDetailChange(sel) {
-    var val = sel.value;
-    document.querySelectorAll('.sys-cd-panel').forEach(function(p) {
-        p.style.display = (p.id === 'cdp-' + val) ? '' : 'none';
-    });
-}
-
 /* ── Component list filters ────────────────────── */
 function sysFKind(btn) {
     btn.classList.toggle('active');
@@ -1411,7 +939,7 @@ function _applyListFilter() {
 
 
 def render_system_spec(data: dict) -> str:
-    spec       = parse_spec(data)
+    spec       = validate_spec(data)
     positions  = layout_graph(spec["nodes"], spec["edges"], spec["groups"])
     arch_svg   = render_architecture_svg(spec, positions)
     panels     = render_detail_panels(spec)
@@ -1420,20 +948,15 @@ def render_system_spec(data: dict) -> str:
     comp_list  = render_component_list_html(spec)
     matrix     = render_matrix_html(spec)
 
-    all_nodes = spec["nodes"] + [
-        n for g in spec["groups"] for n in g.get("detail", {}).get("nodes", [])
-    ]
+    all_nodes = spec["nodes"]
 
-    has_layers  = any(g.get("kind") == "layer" for g in spec["groups"])
-    has_seqs    = bool(spec.get("sequences"))
-    has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in all_nodes)
+    has_changes  = any(n.get("status") in ("added", "modified", "deleted") for n in all_nodes)
     has_snippets = any(n.get("code_snippet") for n in all_nodes) or has_changes
-
-    layer_svg    = render_layer_svg(spec) if has_layers else ""
-    seq_html     = render_sequence_html(spec) if has_seqs else ""
-    code_detail_html = render_code_detail_html(spec)
-    has_code_detail  = bool(code_detail_html)
     changes_html = render_changes_html(all_nodes) if has_changes else ""
+
+    behavioral = has_behavioral(data)
+    ir = compile_ir(spec) if behavioral else None
+    ir_json = json.dumps(ir) if ir else "null"
 
     desc_html = f'<p class="sys-desc">{_e(spec["description"])}</p>' if spec["description"] else ""
 
@@ -1449,17 +972,19 @@ def render_system_spec(data: dict) -> str:
     # Tab bar — only show tabs that have content
     tabs  = '<div class="sys-tabs">'
     tabs += '<button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button>'
-    if has_layers:
-        tabs += '<button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button>'
-    if has_seqs:
+    if behavioral:
+        tabs += '<button class="sys-tab" data-view="dataflow" onclick="sysTab(this)">Dataflow</button>'
         tabs += '<button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button>'
-    if has_code_detail:
-        tabs += '<button class="sys-tab" data-view="codedetail" onclick="sysTab(this)">Code Detail</button>'
+        tabs += '<button class="sys-tab" data-view="scenarios" onclick="sysTab(this)">Scenarios</button>'
+        tabs += '<button class="sys-tab" data-view="invariants" onclick="sysTab(this)">Invariants</button>'
+        tabs += '<button class="sys-tab" data-view="query" onclick="sysTab(this)">Query</button>'
     if has_changes:
         tabs += '<button class="sys-tab" data-view="changes" onclick="sysTab(this)">Changes</button>'
     tabs += '<button class="sys-tab" data-view="matrix" onclick="sysTab(this)">Matrix</button>'
     tabs += '<button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button>'
     tabs += '</div>'
+
+    anim_info = '<div id="sys-anim-info" class="sys-anim-info"></div>' if behavioral else ""
 
     arch_view = f"""
 <div id="view-arch" class="sys-view">
@@ -1467,6 +992,7 @@ def render_system_spec(data: dict) -> str:
   <div class="sys-wrap">
     <div class="sys-main">
       <div class="sys-diagram">{arch_svg}</div>
+      {anim_info}
     </div>
     <div class="sys-sidebar">
       <div id="sys-hint" class="sys-hint">Click a node<br>to see details</div>
@@ -1475,21 +1001,6 @@ def render_system_spec(data: dict) -> str:
     </div>
   </div>
 </div>"""
-
-    layer_view = f"""
-<div id="view-layers" class="sys-view" style="display:none">
-  <div class="sys-layer-wrap">{layer_svg}</div>
-</div>""" if has_layers else ""
-
-    seq_view = f"""
-<div id="view-sequences" class="sys-view" style="display:none">
-  {seq_html}
-</div>""" if has_seqs else ""
-
-    code_detail_view = f"""
-<div id="view-codedetail" class="sys-view" style="display:none">
-  {code_detail_html}
-</div>""" if has_code_detail else ""
 
     changes_view = f"""
 <div id="view-changes" class="sys-view" style="display:none">
@@ -1506,13 +1017,50 @@ def render_system_spec(data: dict) -> str:
   {comp_list}
 </div>"""
 
+    behavioral_views = ""
+    if behavioral:
+        behavioral_views = f"""
+<div id="view-dataflow" class="sys-view" style="display:none">
+  <div class="sys-diagram-panel" id="sys-dataflow-svg"></div>
+</div>
+
+<div id="view-sequences" class="sys-view" style="display:none">
+  <div class="sys-seq-wrap">
+    <div class="sys-seq-controls">
+      <span class="sys-fl">Trace</span>
+      <select id="sys-seq-select" class="sys-seq-sel"></select>
+    </div>
+    <div class="sys-seq-panel" id="sys-seq-svg"></div>
+  </div>
+</div>
+
+<div id="view-scenarios" class="sys-view" style="display:none">
+  <div class="sys-scenarios-list" id="sys-scenarios-list"></div>
+</div>
+
+<div id="view-invariants" class="sys-view" style="display:none">
+  <div class="sys-invariants-list" id="sys-invariants-list"></div>
+</div>
+
+<div id="view-query" class="sys-view" style="display:none">
+  <div class="sys-query-bar">
+    <input type="text" id="sys-query-input" class="sys-query-input" placeholder='Try: paths involving session_cache'>
+  </div>
+  <div class="sys-query-buttons" id="sys-query-buttons">
+    <button class="sys-fc active" data-q="traces with availability">availability failures</button>
+    <button class="sys-fc active" data-q="traces with database-failure">database failures</button>
+  </div>
+  <div class="sys-query-results" id="sys-query-results"></div>
+</div>
+
+<script id="sys-ir" type="application/json">{ir_json}</script>
+<script>{IR_JS}</script>"""
+
     body = f"""
 {desc_html}
 {tabs}
 {arch_view}
-{layer_view}
-{seq_view}
-{code_detail_view}
+{behavioral_views}
 {changes_view}
 {matrix_view}
 {comp_view}

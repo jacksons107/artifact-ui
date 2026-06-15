@@ -16,11 +16,18 @@ def build_tool_description() -> str:
         "                                nodes/edges using code-level kinds) → adds\n"
         "                                a 'Code Detail' tab with a per-module drill-down.\n"
         "                                → Example: mixed_levels\n\n"
+        "Behavioral / semantic models     Add 'data', 'actions', 'invariants', and\n"
+        "  • Derived sequence diagrams       'failure_modes' on nodes — the compiler builds\n"
+        "  • Failure & scenario analysis     a Petri-net-like model and derives Dataflow,\n"
+        "  • Invariant checking               Sequences, Scenarios, Invariants, and Query\n"
+        "                                    tabs. See BEHAVIORAL MODEL section below.\n"
+        "                                → Example: sys_behavioral_auth\n\n"
 
         "── ALWAYS START HERE ──────────────────────────────────────────────────────────\n"
         "Call get_example('sys_microservices') for system-level, get_example('code_bug_fix')\n"
-        "for code-level, or get_example('mixed_levels') to combine both. Read the example,\n"
-        "then adapt it for your system.\n\n"
+        "for code-level, get_example('mixed_levels') to combine both, or\n"
+        "get_example('sys_behavioral_auth') for a behavioral/semantic model. Read the\n"
+        "example, then adapt it for your system.\n\n"
 
         "── SPEC SCHEMA ────────────────────────────────────────────────────────────────\n"
         "{\n"
@@ -82,8 +89,64 @@ def build_tool_description() -> str:
         "  ]\n"
         "}\n\n"
 
+        "── BEHAVIORAL MODEL (optional) ──────────────────────────────────────────────────\n"
+        "Add any of 'data', 'actions', or 'invariants' at the top level to opt into a\n"
+        "compiled semantic model (a Petri-net-like net of places/transitions derived\n"
+        "from your declarations). This unlocks the Dataflow, Sequences (derived),\n"
+        "Scenarios, Invariants, and Query tabs. Do NOT hand-author sequence diagrams or\n"
+        "enumerate failure paths — describe data/actions/failure_modes/invariants and\n"
+        "let the compiler derive traces and failure scenarios.\n\n"
+        "{\n"
+        '  "data": [               // data objects flowing through the system\n'
+        "    {\n"
+        '      "id": "LoginRequest",        // unique — referenced by actions\n'
+        '      "label": "Login Request",\n'
+        '      "schema": {"username": "string", "password": "string"},\n'
+        '      "example": {"username": "jdoe", "password": "***"}\n'
+        "    }\n"
+        "  ],\n"
+        '  "actions": [             // behavioral transitions — \"what happens\"\n'
+        "    {\n"
+        '      "id": "validate_credentials",\n'
+        '      "label": "Validate Credentials",\n'
+        '      "node": "auth_service",       // structural node this runs on\n'
+        '      "consumes": ["LoginRequest"],     // data object ids in\n'
+        '      "produces": ["AuthenticatedUser"], // data object ids out\n'
+        '      "reads": ["auth_db"],         // optional — structural side-effects\n'
+        '      "writes": [],                 // optional\n'
+        '      "tags": ["auth"]              // optional — used by invariants & Query tab\n'
+        "    }\n"
+        "  ],\n"
+        '  "invariants": [          // declarative rules checked against derived traces\n'
+        "    {\n"
+        '      "id": "auth_before_db_read",\n'
+        '      "label": "DB reads require authentication first",\n'
+        '      "severity": "high",       // high | medium | low\n'
+        '      "rule": {\n'
+        '        "type": "precedes",      // precedes | requires | excludes | eventually\n'
+        '        "before": {"tag": "auth"},\n'
+        '        "after": {"node": "auth_db", "edge_kind": "reads"}\n'
+        "      }\n"
+        "    }\n"
+        "  ],\n"
+        '  "initial_tokens": ["LoginRequest"]  // optional — data ids present at t=0\n'
+        "                                       // (default: data objects nothing consumes)\n"
+        "}\n\n"
+        "Failure modes (add 'failure_modes' to a node — auto-expands into synthetic\n"
+        "failure transitions, tagged for the Query tab):\n"
+        "  db, service, http_service, external  → unavailable, timeout\n"
+        "  db, cache                            → stale_read\n"
+        "  queue                                → message_drop, message_delay\n"
+        "  cache                                → unavailable, stale_read\n\n"
+        "Invariant rule types:\n"
+        "  precedes(before, after)   — every 'after' transition must be preceded by a 'before' transition\n"
+        "  requires(before, after)   — if any 'after' fires, some 'before' must fire somewhere in the trace\n"
+        "  excludes(before, after)   — 'before' and 'after' must never both appear in the same trace\n"
+        "  eventually(after, then)   — every 'after' must eventually be followed by a 'then'\n"
+        "Each ref is one of {\"tag\": \"...\"}, {\"action\": \"...\"}, or {\"node\": \"...\", \"edge_kind\": \"reads\"|\"writes\"}.\n\n"
+
         "── NODE KINDS ─────────────────────────────────────────────────────────────────\n"
-        "  System level:  service · db · queue · external · module\n"
+        "  System level:  service · http_service · db · cache · queue · external · module\n"
         "  Code level:    function · class · file · package\n\n"
 
         "── EDGE KINDS ─────────────────────────────────────────────────────────────────\n"
@@ -107,6 +170,17 @@ def build_tool_description() -> str:
         "                   (checks top-level nodes AND group 'detail' nodes).\n"
         "Matrix tab         Adjacency matrix — who calls whom at a glance.\n"
         "Components tab     Filterable table of all nodes with all metadata.\n\n"
+        "── Behavioral tabs (only if 'data'/'actions'/'invariants' present) ─────────────\n"
+        "Dataflow tab       DAG of data objects flowing through transitions.\n"
+        "Sequences tab      Derived traces (happy path + alternates), with a trace\n"
+        "                   picker and animation over the Architecture diagram.\n"
+        "Scenarios tab      Ranked list of derived traces, including failure paths\n"
+        "                   from expanded failure_modes — click to animate.\n"
+        "Invariants tab     Pass/fail per declared invariant, with a counterexample\n"
+        "                   trace (animatable) when violated.\n"
+        "Query tab          Free-text + canned queries over the model, e.g.\n"
+        "                   \"how is Session created\", \"paths involving session_cache\",\n"
+        "                   \"traces with database-failure\".\n\n"
 
         "── INVOCATION ─────────────────────────────────────────────────────────────────\n"
         "render_artifact(\n"
