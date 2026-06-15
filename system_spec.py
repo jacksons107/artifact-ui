@@ -419,6 +419,8 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
         )
     parts.append("</defs>")
 
+    parts.append(f'<g id="{_e(id_prefix)}sys-viewport">')
+
     # Group bounding boxes (rendered first so nodes appear on top)
     for group in groups:
         members = [m for m in group.get("members", []) if m in pos]
@@ -535,8 +537,20 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
             )
         parts.append("</g>")
 
+    parts.append("</g>")  # close sys-viewport
+    parts.append(f'<g id="{_e(id_prefix)}sys-anim-layer"></g>')
+
     parts.append("</svg>")
     return "\n".join(parts)
+
+
+def _node_positions_json(positions: dict) -> str:
+    """JSON map of node id -> center {x, y} for client-side overlay/animation use."""
+    centers = {
+        nid: {"x": p["x"] + p["w"] / 2, "y": p["y"] + p["h"] / 2, "w": p["w"], "h": p["h"]}
+        for nid, p in positions.items()
+    }
+    return json.dumps(centers)
 
 
 # ── Detail panels ─────────────────────────────────────────────────────────────
@@ -1400,6 +1414,25 @@ _CSS = """
 .sys-diagram { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
 .sys-sidebar { flex: 0 0 260px; display: flex; flex-direction: column; gap: 12px; }
 
+/* ── Workspace (architecture home base) ───────── */
+.sys-workspace { display: flex; gap: 20px; align-items: flex-start; }
+.sys-left-dock { flex: 0 0 200px; display: flex; flex-direction: column; gap: 12px; }
+.sys-canvas { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.sys-right-dock { flex: 0 0 280px; display: flex; flex-direction: column; gap: 12px; }
+#sys-anim-layer { pointer-events: none; }
+
+/* ── Inspector dock panels ─────────────────────── */
+.sys-dock-empty { color: var(--gray-500); font-size: 12px; text-align: center; padding: 32px 16px;
+            font-family: var(--mono); background: var(--white); border: var(--border);
+            border-radius: 12px; border-style: dashed; }
+.sys-dock-panel { position: relative; }
+.sys-dock-panel-bar { display: flex; align-items: center; justify-content: space-between;
+            font-family: var(--mono); font-size: 10px; color: var(--gray-500);
+            text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.sys-dock-close { background: none; border: none; color: var(--gray-500); cursor: pointer;
+            font-size: 14px; line-height: 1; padding: 0 4px; }
+.sys-dock-close:hover { color: var(--slate); }
+
 /* ── Filter bar (architecture) ────────────────── */
 .sys-arch-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
@@ -1546,29 +1579,68 @@ function sysTab(el) {
     if (view) view.style.display = 'block';
 }
 
-/* ── Node click (architecture detail panel) ─────── */
-var _active = null;
+/* ── Node click (architecture, opens/focuses an Inspector panel) ──────── */
+/* Multiple inspector panels can be open at once — clicking a node toggles
+   its own panel without closing others. */
 function sysClick(el) {
     var nid = el.getAttribute('data-id');
-    var panel = document.getElementById('panel-' + nid);
-    var wrap = el.closest('.sys-wrap');
-    var hint = wrap ? wrap.querySelector('.sys-hint') : null;
-
-    if (_active === el) {
+    var existing = document.getElementById('inspector-' + nid);
+    if (existing) {
+        existing.remove();
         el.classList.remove('active');
-        _active = null;
-        if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
-        if (hint) hint.style.display = 'block';
+        sysDockUpdateEmpty(el);
         return;
     }
-
-    if (_active) _active.classList.remove('active');
-    if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
-
     el.classList.add('active');
-    _active = el;
-    if (hint) hint.style.display = 'none';
-    if (panel) panel.style.display = 'block';
+    sysOpenInspector(el, nid);
+}
+
+function sysDockUpdateEmpty(el) {
+    var workspace = el.closest('.sys-workspace');
+    if (!workspace) return;
+    var dock = workspace.querySelector('.sys-right-dock');
+    var empty = workspace.querySelector('.sys-dock-empty');
+    if (!dock || !empty) return;
+    var hasPanels = dock.querySelectorAll('.sys-dock-panel').length > 0;
+    empty.style.display = hasPanels ? 'none' : 'block';
+}
+
+/* ── Panel manager: mounts Inspector instances into the right dock ─────── */
+function sysOpenInspector(el, nid) {
+    var workspace = el.closest('.sys-workspace');
+    if (!workspace) return;
+    var template = document.getElementById('panel-' + nid);
+    var dock = workspace.querySelector('.sys-right-dock');
+    if (!template || !dock) return;
+
+    var clone = template.cloneNode(true);
+    clone.id = 'inspector-' + nid;
+    clone.classList.add('sys-dock-panel');
+    clone.style.display = 'block';
+
+    var bar = document.createElement('div');
+    bar.className = 'sys-dock-panel-bar';
+    bar.innerHTML = '<span>Inspector</span>';
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'sys-dock-close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '\\u00d7';
+    closeBtn.onclick = function() { sysCloseInspector(workspace, nid); };
+    bar.appendChild(closeBtn);
+    clone.insertBefore(bar, clone.firstChild);
+
+    dock.appendChild(clone);
+    sysDockUpdateEmpty(el);
+}
+
+function sysCloseInspector(workspace, nid) {
+    var panel = workspace.querySelector('#inspector-' + nid);
+    if (panel) panel.remove();
+    var node = workspace.querySelector('.sys-node[data-id="' + nid + '"]');
+    if (node) {
+        node.classList.remove('active');
+        sysDockUpdateEmpty(node);
+    }
 }
 
 /* ── Architecture kind + status filters ─────────── */
@@ -1594,6 +1666,19 @@ function _applyArchFilter() {
         var sOk = !hasStatusFilter || statuses.size === 0 || !s || statuses.has(s);
         n.classList.toggle('filtered-out', !(kOk && sOk));
     });
+}
+
+/* ── Overlay registry (scaffolding) ─────────────── */
+/* Kind/status filters are the first two overlays. Additional overlays
+   (failure paths, ownership, dataflow, dependencies) register here in
+   later phases; each `apply` recomputes from scratch over .sys-node. */
+var OVERLAYS = {
+    'kind-filter':   { label: 'Kind filter',   apply: _applyArchFilter },
+    'status-filter': { label: 'Status filter', apply: _applyArchFilter }
+};
+function sysOverlayToggle(overlayId) {
+    var overlay = OVERLAYS[overlayId];
+    if (overlay) overlay.apply();
 }
 
 /* ── Sequence selector ─────────────────────────── */
@@ -1883,19 +1968,26 @@ def render_system_spec(data: dict) -> str:
     tabs += '<button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button>'
     tabs += '</div>'
 
+    positions_json = _node_positions_json(positions)
+
     arch_view = f"""
 <div id="view-arch" class="sys-view">
   {filter_bar}
-  <div class="sys-wrap">
-    <div class="sys-main">
-      <div class="sys-diagram">{arch_svg}</div>
-    </div>
-    <div class="sys-sidebar">
-      <div id="sys-hint" class="sys-hint">Click a node<br>to see details</div>
-      {panels}
+  <div class="sys-workspace">
+    <div class="sys-left-dock">
       {legend}
     </div>
+    <div class="sys-canvas">
+      <div class="sys-diagram">{arch_svg}</div>
+    </div>
+    <div class="sys-right-dock" id="sys-right-dock">
+      <div id="sys-dock-empty" class="sys-dock-empty">Click a node<br>to inspect it</div>
+    </div>
   </div>
+  <div id="sys-panel-templates" style="display:none">
+    {panels}
+  </div>
+  <script type="application/json" id="sys-positions-data">{positions_json}</script>
 </div>"""
 
     layer_view = f"""
