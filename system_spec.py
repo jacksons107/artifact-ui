@@ -1433,6 +1433,22 @@ _CSS = """
             font-size: 14px; line-height: 1; padding: 0 4px; }
 .sys-dock-close:hover { color: var(--slate); }
 
+/* ── Toolbar (on-demand panel launchers) ───────── */
+.sys-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.sys-tool-btn { font-family: var(--mono); font-size: 11px; border: var(--border); background: var(--white);
+            border-radius: 6px; padding: 5px 12px; cursor: pointer; color: var(--slate); }
+.sys-tool-btn:hover { background: var(--gray-100); }
+
+/* ── Floating panels (on-demand views) ──────────── */
+.sys-float-panel { position: fixed; background: var(--white); border: var(--border); border-radius: 12px;
+            box-shadow: 0 10px 32px rgba(20,20,19,0.16); width: min(820px, 90vw); max-height: 80vh;
+            display: flex; flex-direction: column; overflow: hidden; }
+.sys-float-bar { display: flex; align-items: center; justify-content: space-between; cursor: move;
+            font-family: var(--mono); font-size: 11px; color: var(--gray-700); font-weight: 500;
+            padding: 8px 14px; border-bottom: var(--border); background: var(--gray-100);
+            border-radius: 12px 12px 0 0; flex: 0 0 auto; }
+.sys-float-body { padding: 16px; overflow: auto; }
+
 /* ── Filter bar (architecture) ────────────────── */
 .sys-arch-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
@@ -1666,6 +1682,75 @@ function _applyArchFilter() {
         var sOk = !hasStatusFilter || statuses.size === 0 || !s || statuses.has(s);
         n.classList.toggle('filtered-out', !(kOk && sOk));
     });
+}
+
+/* ── Floating panels (on-demand views) ──────────── */
+var _floatPanels = {};
+var _floatZTop = 200;
+function sysToggleFloatingPanel(type, title) {
+    var existing = document.getElementById('float-' + type);
+    if (existing) {
+        existing.remove();
+        delete _floatPanels[type];
+        return;
+    }
+    var template = document.getElementById('tpl-' + type);
+    if (!template) return;
+
+    var panel = document.createElement('div');
+    panel.id = 'float-' + type;
+    panel.className = 'sys-float-panel';
+    _floatZTop += 1;
+    panel.style.zIndex = _floatZTop;
+    var n = Object.keys(_floatPanels).length;
+    panel.style.top  = (64 + n * 28) + 'px';
+    panel.style.left = (80 + n * 28) + 'px';
+
+    var bar = document.createElement('div');
+    bar.className = 'sys-float-bar';
+    var titleEl = document.createElement('span');
+    titleEl.textContent = title;
+    bar.appendChild(titleEl);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'sys-dock-close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '\\u00d7';
+    closeBtn.onclick = function() { panel.remove(); delete _floatPanels[type]; };
+    bar.appendChild(closeBtn);
+    panel.appendChild(bar);
+
+    var body = document.createElement('div');
+    body.className = 'sys-float-body';
+    body.innerHTML = template.innerHTML;
+    panel.appendChild(body);
+
+    panel.addEventListener('mousedown', function() {
+        _floatZTop += 1;
+        panel.style.zIndex = _floatZTop;
+    });
+    sysMakeDraggable(panel, bar);
+
+    document.body.appendChild(panel);
+    _floatPanels[type] = panel;
+}
+
+function sysMakeDraggable(panel, handle) {
+    var dragging = false, startX, startY, origX, origY;
+    handle.addEventListener('mousedown', function(e) {
+        dragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        var rect = panel.getBoundingClientRect();
+        origX = rect.left;
+        origY = rect.top;
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        panel.style.left = (origX + e.clientX - startX) + 'px';
+        panel.style.top  = (origY + e.clientY - startY) + 'px';
+    });
+    document.addEventListener('mouseup', function() { dragging = false; });
 }
 
 /* ── Overlay registry (scaffolding) ─────────────── */
@@ -1951,27 +2036,38 @@ def render_system_spec(data: dict) -> str:
             '  <script>document.addEventListener("DOMContentLoaded",function(){hljs.highlightAll();});</script>'
         )
 
-    # Tab bar — only show tabs that have content
-    tabs  = '<div class="sys-tabs">'
-    tabs += '<button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button>'
-    if has_layers:
-        tabs += '<button class="sys-tab" data-view="layers" onclick="sysTab(this)">Layers</button>'
-    if has_seqs:
-        tabs += '<button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button>'
-    if has_behavior:
-        tabs += '<button class="sys-tab" data-view="behavior" onclick="sysTab(this)">Behavior</button>'
-    if has_code_detail:
-        tabs += '<button class="sys-tab" data-view="codedetail" onclick="sysTab(this)">Code Detail</button>'
-    if has_changes:
-        tabs += '<button class="sys-tab" data-view="changes" onclick="sysTab(this)">Changes</button>'
-    tabs += '<button class="sys-tab" data-view="matrix" onclick="sysTab(this)">Matrix</button>'
-    tabs += '<button class="sys-tab" data-view="components" onclick="sysTab(this)">Components</button>'
-    tabs += '</div>'
+    # Tab bar — Layers/Code Detail/Changes/Matrix/Components are now on-demand
+    # floating panels opened from the architecture toolbar (Phase 2). Only
+    # show the tab bar when there's more than one remaining tab.
+    show_tabs = has_seqs or has_behavior
+    tabs = ""
+    if show_tabs:
+        tabs  = '<div class="sys-tabs">'
+        tabs += '<button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button>'
+        if has_seqs:
+            tabs += '<button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button>'
+        if has_behavior:
+            tabs += '<button class="sys-tab" data-view="behavior" onclick="sysTab(this)">Behavior</button>'
+        tabs += '</div>'
 
     positions_json = _node_positions_json(positions)
 
+    # Toolbar — opens on-demand floating panels for Matrix/Components and,
+    # if present, Layers/Code Detail/Changes (Phase 2).
+    toolbar = '<div class="sys-toolbar">'
+    toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'matrix\',\'Dependency Matrix\')">Matrix</button>'
+    toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'components\',\'Components\')">Components</button>'
+    if has_layers:
+        toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'layers\',\'Layers\')">Layers</button>'
+    if has_code_detail:
+        toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'codedetail\',\'Code Detail\')">Code Detail</button>'
+    if has_changes:
+        toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'changes\',\'Changes\')">Changes</button>'
+    toolbar += '</div>'
+
     arch_view = f"""
 <div id="view-arch" class="sys-view">
+  {toolbar}
   {filter_bar}
   <div class="sys-workspace">
     <div class="sys-left-dock">
@@ -1990,11 +2086,6 @@ def render_system_spec(data: dict) -> str:
   <script type="application/json" id="sys-positions-data">{positions_json}</script>
 </div>"""
 
-    layer_view = f"""
-<div id="view-layers" class="sys-view" style="display:none">
-  <div class="sys-layer-wrap">{layer_svg}</div>
-</div>""" if has_layers else ""
-
     seq_view = f"""
 <div id="view-sequences" class="sys-view" style="display:none">
   {seq_html}
@@ -2005,25 +2096,12 @@ def render_system_spec(data: dict) -> str:
   {behavior_html}
 </div>""" if has_behavior else ""
 
-    code_detail_view = f"""
-<div id="view-codedetail" class="sys-view" style="display:none">
-  {code_detail_html}
-</div>""" if has_code_detail else ""
-
-    changes_view = f"""
-<div id="view-changes" class="sys-view" style="display:none">
-  {changes_html}
-</div>""" if has_changes else ""
-
-    matrix_view = f"""
-<div id="view-matrix" class="sys-view" style="display:none">
-  {matrix}
-</div>"""
-
-    comp_view = f"""
-<div id="view-components" class="sys-view" style="display:none">
-  {comp_list}
-</div>"""
+    # On-demand floating panel templates (Phase 2) — hidden until opened via toolbar.
+    tpl_layers = f'<div id="tpl-layers" style="display:none"><div class="sys-layer-wrap">{layer_svg}</div></div>' if has_layers else ""
+    tpl_codedetail = f'<div id="tpl-codedetail" style="display:none">{code_detail_html}</div>' if has_code_detail else ""
+    tpl_changes = f'<div id="tpl-changes" style="display:none">{changes_html}</div>' if has_changes else ""
+    tpl_matrix = f'<div id="tpl-matrix" style="display:none">{matrix}</div>'
+    tpl_components = f'<div id="tpl-components" style="display:none">{comp_list}</div>'
 
     js = _JS.replace("__NODE_KIND_STYLES__", _NODE_KIND_STYLES_JSON)
 
@@ -2031,13 +2109,13 @@ def render_system_spec(data: dict) -> str:
 {desc_html}
 {tabs}
 {arch_view}
-{layer_view}
 {seq_view}
 {behavior_view}
-{code_detail_view}
-{changes_view}
-{matrix_view}
-{comp_view}
+{tpl_layers}
+{tpl_codedetail}
+{tpl_changes}
+{tpl_matrix}
+{tpl_components}
 <script>{js}</script>
 """
 
