@@ -1275,6 +1275,30 @@ _CSS = """
     filter: drop-shadow(0 0 4px rgba(217,119,87,0.6));
 }
 
+/* ── Animation tokens & pulse ───────────────────── */
+.sys-token { pointer-events: none; }
+@keyframes sys-pulse {
+    0%, 100% { filter: none; }
+    50%       { filter: drop-shadow(0 0 8px rgba(59,130,246,0.75)); }
+}
+.sys-pulse { animation: sys-pulse 0.55s ease; }
+@keyframes sys-pulse-fail {
+    0%, 100% { filter: none; }
+    50%       { filter: drop-shadow(0 0 8px rgba(176,74,63,0.75)); }
+}
+.sys-pulse-fail { animation: sys-pulse-fail 0.55s ease; }
+
+/* ── Playback strip ──────────────────────────────── */
+#sys-playback-strip { display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--white); border: var(--border); border-radius: 10px;
+    margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--slate); }
+#sys-playback-strip .sys-pb-title { font-weight: 600; white-space: nowrap; }
+#sys-playback-strip .sys-pb-counter { color: var(--gray-500); white-space: nowrap; }
+#sys-playback-scrub { flex: 1 1 120px; min-width: 80px; cursor: pointer; }
+#sys-playback-label { flex: 1 1 220px; color: var(--gray-700); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+.sys-anim-btn { font-size: 10px !important; padding: 3px 8px !important; }
+
 /* ── Floating panels (on-demand views) ──────────── */
 .sys-float-panel { position: fixed; background: var(--white); border: var(--border); border-radius: 12px;
             box-shadow: 0 10px 32px rgba(20,20,19,0.16); width: min(820px, 90vw); max-height: 80vh;
@@ -1604,6 +1628,7 @@ function sysGraphData() {
 }
 
 var _sysBehaviorData = null;
+var _sysBehaviorTraces = [];
 function sysBehaviorDataGet() {
     if (_sysBehaviorData) return _sysBehaviorData;
     var el = document.getElementById('sys-behavior-data');
@@ -1842,6 +1867,299 @@ function sysQueryRun() {
     }
 }
 
+/* ── Animation layer helpers (Phase 4) ─────────────────────────────────────── */
+function sysAnimLayer() {
+    return document.getElementById('sys-anim-layer') ||
+           document.querySelector('[id$="sys-anim-layer"]');
+}
+function sysAnimClear() {
+    var layer = sysAnimLayer();
+    if (layer) layer.innerHTML = '';
+}
+
+function sysBezierPt(sx, sy, cx1, cy1, cx2, cy2, ex, ey, t) {
+    var mt = 1 - t;
+    return {
+        x: mt*mt*mt*sx + 3*mt*mt*t*cx1 + 3*mt*t*t*cx2 + t*t*t*ex,
+        y: mt*mt*mt*sy + 3*mt*mt*t*cy1 + 3*mt*t*t*cy2 + t*t*t*ey
+    };
+}
+
+/* Animate a single step token from step.from to step.to along the same
+   bezier used by the architecture SVG edges. Calls onDone when finished. */
+function sysStepAnimate(step, onDone) {
+    var pos = sysGraphData().positions;
+    var src = pos[step.from], dst = pos[step.to];
+    if (!src || !dst) { if (onDone) onDone(); return; }
+    var layer = sysAnimLayer();
+    if (!layer) { if (onDone) onDone(); return; }
+
+    /* Match Python edge coords: src center → bottom edge, dst center → top edge */
+    var sx = src.x, sy = src.y + src.h / 2;
+    var ex = dst.x, ey = dst.y - dst.h / 2;
+    var dy = ey - sy;
+    var cx1 = sx, cy1 = sy + dy * 0.45;
+    var cx2 = ex, cy2 = ey - dy * 0.45;
+
+    var isLoop = step.from === step.to;
+    var fail   = !!step.failure;
+    var fill   = fail ? '#B04A3F' : '#3B82F6';
+
+    var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('r', '6');
+    circle.setAttribute('fill', fill);
+    circle.setAttribute('class', 'sys-token');
+    layer.appendChild(circle);
+
+    var dur = 700, start = null;
+    function frame(ts) {
+        if (!start) start = ts;
+        var t = Math.min((ts - start) / dur, 1);
+        var pt;
+        if (isLoop) {
+            /* Self-loop: swing out to the right and back */
+            pt = { x: src.x + src.w * 0.6 * Math.sin(Math.PI * t), y: src.y + 10 * Math.sin(2 * Math.PI * t) };
+        } else {
+            pt = sysBezierPt(sx, sy, cx1, cy1, cx2, cy2, ex, ey, t);
+        }
+        circle.setAttribute('cx', pt.x.toFixed(1));
+        circle.setAttribute('cy', pt.y.toFixed(1));
+        if (t < 1) {
+            requestAnimationFrame(frame);
+        } else {
+            sysNodePulse(step.to, fail);
+            setTimeout(function() {
+                if (layer.contains(circle)) layer.removeChild(circle);
+                if (onDone) onDone();
+            }, 180);
+        }
+    }
+    requestAnimationFrame(frame);
+}
+
+function sysNodePulse(nid, fail) {
+    var node = document.querySelector('.sys-node[data-id="' + nid + '"]');
+    if (!node) return;
+    var cls = fail ? 'sys-pulse-fail' : 'sys-pulse';
+    node.classList.remove('sys-pulse', 'sys-pulse-fail');
+    void node.offsetWidth; /* force reflow to restart animation */
+    node.classList.add(cls);
+    setTimeout(function() { node.classList.remove(cls); }, 600);
+}
+
+/* ── Trace stepper ───────────────────────────────── */
+var _stepper = { steps: [], idx: -1, playing: false, animPending: false };
+
+function sysStepperLoad(steps, title) {
+    _stepper.steps = steps;
+    _stepper.idx   = -1;
+    _stepper.playing     = false;
+    _stepper.animPending = false;
+    sysAnimClear();
+    var strip = document.getElementById('sys-playback-strip');
+    if (strip) strip.style.display = 'flex';
+    var titleEl = document.getElementById('sys-pb-title');
+    if (titleEl) titleEl.textContent = title || 'Trace';
+    sysStepperUpdateUI();
+    sysStepperPlay();
+}
+
+function sysStepperLoadTrace(idx) {
+    var trace = _sysBehaviorTraces[idx];
+    if (!trace) return;
+    sysStepperLoad(sysTraceToSteps(trace.history), 'Trace ' + (idx + 1));
+}
+
+function sysStepperUpdateUI() {
+    var idx   = _stepper.idx;
+    var total = _stepper.steps.length;
+    var counter = document.getElementById('sys-pb-counter');
+    if (counter) counter.textContent = Math.max(0, idx) + ' / ' + total;
+    var label = document.getElementById('sys-pb-label');
+    if (label) {
+        var step = _stepper.steps[idx] || null;
+        label.textContent = step ? (step.label || (step.from + ' → ' + step.to)) : '';
+    }
+    var scrub = document.getElementById('sys-playback-scrub');
+    if (scrub) { scrub.max = Math.max(0, total - 1); scrub.value = Math.max(0, idx); }
+    var btn = document.getElementById('sys-play-btn');
+    if (btn) btn.textContent = _stepper.playing ? '\\u23f8' : '\\u25b6';
+}
+
+function sysStepperAdvance() {
+    if (_stepper.animPending) return;
+    if (_stepper.idx + 1 >= _stepper.steps.length) {
+        _stepper.playing = false;
+        sysStepperUpdateUI();
+        return;
+    }
+    _stepper.idx++;
+    _stepper.animPending = true;
+    sysStepperUpdateUI();
+    sysStepAnimate(_stepper.steps[_stepper.idx], function() {
+        _stepper.animPending = false;
+        if (_stepper.playing) setTimeout(sysStepperAdvance, 250);
+    });
+}
+
+function sysStepperPlay() {
+    if (_stepper.playing) return;
+    _stepper.playing = true;
+    sysStepperUpdateUI();
+    sysStepperAdvance();
+}
+function sysStepperPause() { _stepper.playing = false; sysStepperUpdateUI(); }
+function sysStepperToggle() { if (_stepper.playing) sysStepperPause(); else sysStepperPlay(); }
+function sysStepperPrev() {
+    if (_stepper.idx <= 0) return;
+    _stepper.playing = false;
+    _stepper.idx--;
+    sysAnimClear();
+    sysStepperUpdateUI();
+}
+function sysStepperNext() { _stepper.playing = false; sysStepperAdvance(); }
+function sysStepperSeek(val) {
+    _stepper.playing = false;
+    _stepper.idx = parseInt(val, 10);
+    sysAnimClear();
+    sysStepperUpdateUI();
+}
+function sysStepperClose() {
+    _stepper.playing = false;
+    sysAnimClear();
+    var strip = document.getElementById('sys-playback-strip');
+    if (strip) strip.style.display = 'none';
+}
+
+/* ── State explorer ─────────────────────────────── */
+var _stateExp = { facts: null, selected: null };
+
+function sysStateExpContainer() { return document.getElementById('sys-state-exp'); }
+
+function sysStateExpRender() {
+    var container = sysStateExpContainer();
+    if (!container) return;
+    var data = sysBehaviorDataGet();
+    if (!data || !data.actions) {
+        container.innerHTML = '<p class="sys-mono" style="color:var(--gray-500)">No behavior data.</p>';
+        return;
+    }
+
+    /* Initialise with empty facts on first open */
+    if (_stateExp.facts === null) _stateExp.facts = new Set();
+
+    var html = '';
+
+    /* Scenario reset row */
+    if (data.scenarios && data.scenarios.length) {
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">';
+        html += '<span class="sys-fl">Reset to:</span>';
+        data.scenarios.forEach(function(sc) {
+            html += '<button class="sys-tool-btn" onclick="sysStateExpReset(\\'' + sc.id + '\\')">' + sysEsc(sc.label) + '</button>';
+        });
+        html += '<button class="sys-tool-btn" onclick="sysStateExpReset(null)">Empty</button>';
+        html += '</div>';
+    }
+
+    /* Current facts */
+    var facts = _stateExp.facts ? Array.from(_stateExp.facts).sort() : [];
+    html += '<div style="margin-bottom:12px"><span class="sys-eg-label">Current facts</span>';
+    html += '<div class="sys-tags" style="margin-top:6px">';
+    html += facts.length
+        ? facts.map(function(f) { return '<span class="sys-tag">' + sysEsc(f) + '</span>'; }).join('')
+        : '<span class="sys-tag" style="color:var(--gray-500)">(none)</span>';
+    html += '</div></div>';
+
+    if (_stateExp.selected) {
+        /* Outcome choices for selected action */
+        var a = _stateExp.selected;
+        var validOutcomes = (a.outcomes || []).filter(function(o) {
+            return (o.requires || []).every(function(f) { return _stateExp.facts.has(f); });
+        });
+        html += '<div><span class="sys-eg-label">Outcomes for: ' + sysEsc(a.label) + '</span>';
+        html += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">';
+        validOutcomes.forEach(function(o) {
+            var col = o._origin ? '#B04A3F' : '#3B6E4A';
+            html += '<button class="sys-tool-btn" style="text-align:left;padding:8px 12px;border-color:' + col + '"'
+                  + ' onclick="sysStateExpApply(\\'' + a.id + '\\',\\'' + o.id + '\\')">'
+                  + '<span style="color:' + col + '">' + sysEsc(o.label) + '</span>';
+            if (o.emits && o.emits.length)
+                html += '<br><span class="sys-fl">emits: ' + o.emits.map(sysEsc).join(', ') + '</span>';
+            html += '</button>';
+        });
+        html += '<button class="sys-tool-btn" onclick="sysStateExpCancel()">\\u2190 back</button>';
+        html += '</div></div>';
+    } else {
+        /* Enabled actions */
+        var enabled = data.actions.filter(function(a) {
+            return (a.preconditions || []).every(function(f) { return _stateExp.facts.has(f); });
+        });
+        html += '<div><span class="sys-eg-label">Enabled actions (' + enabled.length + ')</span>';
+        if (!enabled.length) {
+            html += '<p class="sys-mono" style="color:var(--gray-500);margin-top:8px">No actions enabled — try resetting to a scenario.</p>';
+        } else {
+            html += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">';
+            enabled.forEach(function(a) {
+                var peers = (a.touches || []).filter(function(t) { return t !== a.component; });
+                html += '<button class="sys-tool-btn" style="text-align:left;padding:8px 12px"'
+                      + ' onclick="sysStateExpSelect(\\'' + a.id + '\\')">'
+                      + '<strong>' + sysEsc(a.label) + '</strong><br>'
+                      + '<span class="sys-fl">' + sysEsc(a.component)
+                      + (peers.length ? ' \\u2192 ' + peers.map(sysEsc).join(', ') : '') + '</span>'
+                      + '</button>';
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
+}
+
+function sysStateExpReset(scenarioId) {
+    var data = sysBehaviorDataGet();
+    _stateExp.selected = null;
+    if (scenarioId && data) {
+        var sc = (data.scenarios || []).find(function(s) { return s.id === scenarioId; });
+        _stateExp.facts = new Set(sc ? sc.initial_facts || [] : []);
+    } else {
+        _stateExp.facts = new Set();
+    }
+    sysAnimClear();
+    sysStateExpRender();
+}
+
+function sysStateExpSelect(actionId) {
+    var data = sysBehaviorDataGet();
+    if (!data) return;
+    _stateExp.selected = data.actions.find(function(a) { return a.id === actionId; }) || null;
+    sysStateExpRender();
+}
+
+function sysStateExpCancel() { _stateExp.selected = null; sysStateExpRender(); }
+
+function sysStateExpApply(actionId, outcomeId) {
+    var data = sysBehaviorDataGet();
+    if (!data) return;
+    var action  = data.actions.find(function(a) { return a.id === actionId; });
+    var outcome = action && (action.outcomes || []).find(function(o) { return o.id === outcomeId; });
+    if (!action || !outcome) return;
+
+    /* Animate the chosen step on the canvas */
+    var touches = (action.touches || []).filter(function(t) { return t !== action.component; });
+    var to = touches.length ? touches[0] : action.component;
+    sysStepAnimate({ from: action.component, to: to, label: action.label + ' \\u2192 ' + outcome.label, failure: !!outcome._origin },
+        function() { setTimeout(sysAnimClear, 900); });
+
+    /* Apply effects to fact-set */
+    var newFacts = new Set(_stateExp.facts);
+    (outcome.effects && outcome.effects.remove || []).forEach(function(f) { newFacts.delete(f); });
+    (outcome.effects && outcome.effects.add    || []).forEach(function(f) { newFacts.add(f); });
+    _stateExp.facts    = newFacts;
+    _stateExp.selected = null;
+    sysStateExpRender();
+}
+
 /* ── Code detail selector ──────────────────────── */
 function sysCodeDetailChange(sel) {
     var val = sel.value;
@@ -2036,6 +2354,7 @@ function sysBehaviorRender() {
 
     var result = sysDeriveTraces(data.actions, scenario);
     var traces = (failuresOnly && failuresOnly.checked) ? result.failed : result.completed.concat(result.failed);
+    _sysBehaviorTraces = traces;
 
     var html = '';
     if (!traces.length) {
@@ -2050,7 +2369,9 @@ function sysBehaviorRender() {
             ? '<span class="sys-kbadge" style="color:#B04A3F;border-color:#B04A3F">dead end</span>'
             : '<span class="sys-kbadge" style="color:#788C5D;border-color:#788C5D">goal reached</span>';
         html += '<div class="sys-trace-panel">';
-        html += '<div class="sys-trace-header"><span class="sys-trace-title">Trace ' + (idx + 1) + '</span>' + badge + '</div>';
+        html += '<div class="sys-trace-header"><span class="sys-trace-title">Trace ' + (idx + 1) + '</span>' + badge;
+        if (steps.length) html += '<button class="sys-tool-btn sys-anim-btn" style="margin-left:auto" onclick="sysStepperLoadTrace(' + idx + ')">&#9654;&nbsp;Animate</button>';
+        html += '</div>';
         html += '<div class="sys-trace-diagram">' + svg + '</div>';
         html += '<div class="sys-trace-facts"><span class="sys-eg-label">Facts true after trace</span><div class="sys-tags">' +
             (finalFacts.length ? finalFacts.map(function(f) { return '<span class="sys-tag">' + sysEsc(f) + '</span>'; }).join('') : '<span class="sys-tag">(none)</span>') +
@@ -2127,6 +2448,7 @@ def render_system_spec(data: dict) -> str:
         toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'changes\',\'Changes\')">Changes</button>'
     if has_behavior:
         toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'traces\',\'Traces\')">Traces</button>'
+        toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'stateexplorer\',\'State Explorer\');sysStateExpRender()">Explore</button>'
     toolbar += '</div>'
 
     arch_view = f"""
@@ -2145,6 +2467,16 @@ def render_system_spec(data: dict) -> str:
       <div id="sys-dock-empty" class="sys-dock-empty">Click a node<br>to inspect it</div>
     </div>
   </div>
+  <div id="sys-playback-strip">
+    <span id="sys-pb-title" class="sys-pb-title"></span>
+    <button class="sys-tool-btn" onclick="sysStepperPrev()">&#9664;</button>
+    <button class="sys-tool-btn" id="sys-play-btn" onclick="sysStepperToggle()">&#9654;</button>
+    <button class="sys-tool-btn" onclick="sysStepperNext()">&#9654;|</button>
+    <span id="sys-pb-counter" class="sys-pb-counter">0 / 0</span>
+    <input type="range" id="sys-playback-scrub" min="0" max="0" value="0" oninput="sysStepperSeek(this.value)">
+    <span id="sys-pb-label"></span>
+    <button class="sys-tool-btn" onclick="sysStepperClose()">&#10005;</button>
+  </div>
   <div id="sys-panel-templates" style="display:none">
     {panels}
   </div>
@@ -2158,6 +2490,8 @@ def render_system_spec(data: dict) -> str:
     tpl_matrix = f'<div id="tpl-matrix" style="display:none">{matrix}</div>'
     tpl_components = f'<div id="tpl-components" style="display:none">{comp_list}</div>'
     tpl_traces = f'<div id="tpl-traces" style="display:none">{behavior_html}</div>' if has_behavior else ""
+    tpl_stateexplorer = ('<div id="tpl-stateexplorer" style="display:none">'
+                         '<div id="sys-state-exp"></div></div>') if has_behavior else ""
 
     js = _JS.replace("__NODE_KIND_STYLES__", _NODE_KIND_STYLES_JSON)
 
@@ -2170,6 +2504,7 @@ def render_system_spec(data: dict) -> str:
 {tpl_matrix}
 {tpl_components}
 {tpl_traces}
+{tpl_stateexplorer}
 <script>{js}</script>
 """
 
