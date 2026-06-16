@@ -103,34 +103,6 @@ EXAMPLES = {
             {"id": "tokens_file", "label": "tokens.py",      "kind": "package", "members": ["issue_token_pair", "rotate_refresh_token", "create_access_token", "hash_token"]},
             {"id": "models_file", "label": "models.py",      "kind": "package", "members": ["refresh_token_model"]},
         ],
-        "sequences": [
-            {
-                "id": "before",
-                "label": "Before — login returns access token only",
-                "steps": [
-                    {"from": "client",       "to": "auth_router",      "label": "POST /auth/login"},
-                    {"from": "auth_router",  "to": "create_access_token","label": "create JWT"},
-                    {"from": "auth_router",  "to": "client",           "label": "{ access_token }"},
-                ]
-            },
-            {
-                "id": "after",
-                "label": "After — login + refresh rotation",
-                "steps": [
-                    {"from": "client",              "to": "auth_router",          "label": "POST /auth/login"},
-                    {"from": "auth_router",         "to": "issue_token_pair",     "label": "issue pair"},
-                    {"from": "issue_token_pair",    "to": "create_access_token",  "label": "JWT"},
-                    {"from": "issue_token_pair",    "to": "hash_token",           "label": "hash refresh"},
-                    {"from": "issue_token_pair",    "to": "db",                   "label": "INSERT refresh_token"},
-                    {"from": "auth_router",         "to": "client",               "label": "{ access_token, refresh_token }"},
-                    {"from": "client",              "to": "auth_router",          "label": "POST /auth/refresh"},
-                    {"from": "auth_router",         "to": "rotate_refresh_token", "label": "rotate"},
-                    {"from": "rotate_refresh_token","to": "db",                   "label": "DELETE old token"},
-                    {"from": "rotate_refresh_token","to": "issue_token_pair",     "label": "re-issue"},
-                    {"from": "auth_router",         "to": "client",               "label": "new { access_token, refresh_token }"},
-                ]
-            }
-        ]
     },
 
     "code_bug_fix": {
@@ -203,31 +175,6 @@ EXAMPLES = {
             {"from": "get_product",    "to": "cache",          "kind": "reads",  "label": "GET key"},
             {"from": "get_product",    "to": "db_session",     "kind": "reads",  "label": "on miss"},
         ],
-        "sequences": [
-            {
-                "id": "race",
-                "label": "Bug — race window after commit",
-                "steps": [
-                    {"from": "product_router", "to": "update_product", "label": "PATCH product"},
-                    {"from": "update_product", "to": "db_session",     "label": "db.commit()  ← committed"},
-                    {"from": "product_router", "to": "get_product",    "label": "concurrent GET (cache miss)"},
-                    {"from": "get_product",    "to": "db_session",     "label": "load from DB → stale repopulates cache"},
-                    {"from": "update_product", "to": "cache_delete",   "label": "cache.delete()  ← too late"},
-                ]
-            },
-            {
-                "id": "fixed",
-                "label": "Fix — invalidate inside transaction",
-                "steps": [
-                    {"from": "product_router", "to": "update_product", "label": "PATCH product"},
-                    {"from": "update_product", "to": "cache_delete",   "label": "cache.delete()  ← before commit"},
-                    {"from": "cache_delete",   "to": "cache",          "label": "DEL product:id"},
-                    {"from": "update_product", "to": "db_session",     "label": "db.commit()"},
-                    {"from": "product_router", "to": "get_product",    "label": "concurrent GET"},
-                    {"from": "get_product",    "to": "cache",          "label": "miss → loads fresh from DB"},
-                ]
-            }
-        ]
     },
 
     "sys_microservices": {
@@ -270,34 +217,6 @@ EXAMPLES = {
             {"id": "edge",        "label": "Edge Layer",     "kind": "layer",  "members": ["gateway"]},
             {"id": "fulfillment", "label": "Fulfillment",    "kind": "domain", "members": ["orders", "inventory", "orderdb", "invdb"]},
             {"id": "data",        "label": "Data Layer",     "kind": "layer",  "members": ["orderdb", "invdb", "paydb", "userdb"]},
-        ],
-        "sequences": [
-            {
-                "id": "place-order",
-                "label": "Place Order (happy path)",
-                "steps": [
-                    {"from": "client",    "to": "gateway",   "label": "POST /orders HTTPS"},
-                    {"from": "gateway",   "to": "orders",    "label": "create order REST"},
-                    {"from": "orders",    "to": "payments",  "label": "charge card gRPC"},
-                    {"from": "payments",  "to": "paydb",     "label": "record payment SQL"},
-                    {"from": "payments",  "to": "orders",    "label": "payment confirmed"},
-                    {"from": "orders",    "to": "orderdb",   "label": "persist order SQL"},
-                    {"from": "orders",    "to": "bus",       "label": "emit OrderPlaced"},
-                    {"from": "inventory", "to": "bus",       "label": "consume OrderPlaced"},
-                    {"from": "notify",    "to": "bus",       "label": "consume → send email"},
-                ]
-            },
-            {
-                "id": "user-login",
-                "label": "User Login",
-                "steps": [
-                    {"from": "client",  "to": "gateway", "label": "POST /auth/login HTTPS"},
-                    {"from": "gateway", "to": "users",   "label": "verify credentials REST"},
-                    {"from": "users",   "to": "userdb",  "label": "lookup user SQL"},
-                    {"from": "users",   "to": "gateway", "label": "JWT + refresh token"},
-                    {"from": "gateway", "to": "client",  "label": "200 OK + tokens"},
-                ]
-            }
         ],
         "data_types": [
             {"id": "LoginRequest",    "label": "LoginRequest",    "fields": ["username", "password"]},
@@ -457,34 +376,6 @@ EXAMPLES = {
             {"id": "storage",    "label": "Storage",     "kind": "layer", "members": ["loader", "warehouse", "stream", "cache"]},
             {"id": "serving",    "label": "Serving",     "kind": "layer", "members": ["api", "ui"]},
         ],
-        "sequences": [
-            {
-                "id": "ingest-store",
-                "label": "Ingest & Store",
-                "steps": [
-                    {"from": "device",    "to": "ingest",    "label": "POST /ingest HTTPS"},
-                    {"from": "ingest",    "to": "raw",       "label": "publish to raw topic"},
-                    {"from": "transform", "to": "raw",       "label": "consume event"},
-                    {"from": "transform", "to": "enriched",  "label": "publish enriched"},
-                    {"from": "loader",    "to": "enriched",  "label": "consume batch"},
-                    {"from": "loader",    "to": "warehouse", "label": "batch insert"},
-                    {"from": "stream",    "to": "enriched",  "label": "consume windowed"},
-                    {"from": "stream",    "to": "cache",     "label": "write aggregates"},
-                ]
-            },
-            {
-                "id": "view-dashboard",
-                "label": "View Dashboard",
-                "steps": [
-                    {"from": "ui",  "to": "api",       "label": "GET /metrics/realtime"},
-                    {"from": "api", "to": "cache",     "label": "read TTL aggregates"},
-                    {"from": "api", "to": "ui",        "label": "current metrics"},
-                    {"from": "ui",  "to": "api",       "label": "GET /metrics/historical"},
-                    {"from": "api", "to": "warehouse", "label": "BigQuery SQL"},
-                    {"from": "api", "to": "ui",        "label": "time-series data"},
-                ]
-            }
-        ]
     },
 
     "sys_monolith": {

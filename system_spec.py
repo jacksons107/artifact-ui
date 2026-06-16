@@ -230,7 +230,6 @@ def parse_spec(data: dict) -> dict:
     nodes      = data.get("nodes", [])
     edges      = data.get("edges", [])
     groups     = data.get("groups", [])
-    seqs       = data.get("sequences", [])
     actions    = data.get("actions", [])
     facts      = data.get("facts", [])
     data_types = data.get("data_types", [])
@@ -258,19 +257,6 @@ def parse_spec(data: dict) -> dict:
                 f"groups[{i}] (id={group['id']!r}).detail."
             )
 
-    for i, seq in enumerate(seqs):
-        if "id" not in seq:
-            raise ValueError(f"sequences[{i}] is missing required field 'id'.")
-        if "label" not in seq:
-            raise ValueError(f"sequences[{i}] (id={seq['id']!r}) is missing required field 'label'.")
-        for j, step in enumerate(seq.get("steps", [])):
-            for field in ("from", "to"):
-                val = step.get(field)
-                if val and val not in node_ids:
-                    raise ValueError(
-                        f"sequences[{i}].steps[{j}]: {field!r} references unknown node id {val!r}."
-                    )
-
     for i, sc in enumerate(scenarios):
         if "id" not in sc:
             raise ValueError(f"scenarios[{i}] is missing required field 'id'.")
@@ -297,7 +283,6 @@ def parse_spec(data: dict) -> dict:
         "nodes":       nodes,
         "edges":       edges,
         "groups":      groups,
-        "sequences":   seqs,
         "actions":     actions,
         "facts":       fact_registry,
         "data_types":  data_types,
@@ -468,8 +453,11 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
         cid    = color.replace("#", "")
 
         parts.append(
+            f'<g class="sys-edge" data-from="{_e(id_prefix + src)}" data-to="{_e(id_prefix + dst)}" data-kind="{_e(kind)}">'
+        )
+        parts.append(
             f'<path d="M{sx:.1f},{sy:.1f} C{cx1:.1f},{cy1:.1f} {cx2:.1f},{cy2:.1f} {ex:.1f},{ey:.1f}" '
-            f'fill="none" stroke="{color}" stroke-width="1.5"{dash} marker-end="url(#arr-{cid})"/>'
+            f'fill="none" stroke="{color}" stroke-width="1.5"{dash} marker-end="url(#arr-{cid})" class="sys-er-path"/>'
         )
 
         label = edge.get("label", "")
@@ -487,6 +475,8 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
                 f'font-family="ui-monospace,monospace" font-size="10" fill="{color}">'
                 f'{_e(label)}</text>'
             )
+
+        parts.append("</g>")  # close sys-edge
 
     # Nodes
     for node in nodes:
@@ -544,13 +534,22 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
     return "\n".join(parts)
 
 
-def _node_positions_json(positions: dict) -> str:
-    """JSON map of node id -> center {x, y} for client-side overlay/animation use."""
+def _graph_data_json(spec: dict, positions: dict) -> str:
+    """JSON blob of node/edge/position data for client-side query, overlay and
+    animation use: {positions: {id -> {x,y,w,h}}, nodes: [...], edges: [...]}."""
     centers = {
         nid: {"x": p["x"] + p["w"] / 2, "y": p["y"] + p["h"] / 2, "w": p["w"], "h": p["h"]}
         for nid, p in positions.items()
     }
-    return json.dumps(centers)
+    nodes = [
+        {"id": n["id"], "label": n.get("label", n["id"]), "kind": n.get("kind", "")}
+        for n in spec["nodes"]
+    ]
+    edges = [
+        {"from": e.get("from"), "to": e.get("to"), "kind": e.get("kind", ""), "label": e.get("label", "")}
+        for e in spec["edges"]
+    ]
+    return json.dumps({"positions": centers, "nodes": nodes, "edges": edges})
 
 
 # ── Detail panels ─────────────────────────────────────────────────────────────
@@ -865,146 +864,6 @@ def render_layer_svg(spec: dict) -> str:
     return "\n".join(parts)
 
 
-# ── Sequence diagram ─────────────────────────────────────────────────────────
-
-_SEQ_COL_W    = 140
-_SEQ_COL_GAP  = 56
-_SEQ_HEADER_H = 52
-_SEQ_STEP_H   = 64
-_SEQ_TOP_PAD  = 20
-_SEQ_SIDE_PAD = 40
-
-
-def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
-    steps = seq.get("steps", [])
-    if not steps:
-        return ""
-
-    # Collect participants in order of first appearance
-    seen: dict[str, bool] = {}
-    participants: list[str] = []
-    for step in steps:
-        for fld in ("from", "to"):
-            nid = step.get(fld)
-            if nid and nid not in seen:
-                seen[nid] = True
-                participants.append(nid)
-
-    n     = len(participants)
-    SVG_W = 2 * _SEQ_SIDE_PAD + n * _SEQ_COL_W + max(0, n - 1) * _SEQ_COL_GAP
-    SVG_H = _SEQ_TOP_PAD + _SEQ_HEADER_H + len(steps) * _SEQ_STEP_H + 32
-
-    # Center-x per participant
-    col_cx: dict[str, float] = {}
-    for i, nid in enumerate(participants):
-        col_cx[nid] = _SEQ_SIDE_PAD + i * (_SEQ_COL_W + _SEQ_COL_GAP) + _SEQ_COL_W / 2
-
-    LIFELINE_TOP = _SEQ_TOP_PAD + _SEQ_HEADER_H
-    LIFELINE_BOT = SVG_H - 16
-
-    parts = [
-        f'<svg viewBox="0 0 {SVG_W:.0f} {SVG_H:.0f}" '
-        f'style="display:block;width:100%;height:auto;max-height:720px">'
-    ]
-
-    # Participant boxes and lifelines
-    for nid in participants:
-        node = node_by_id.get(nid, {})
-        cx   = col_cx[nid]
-        x    = cx - _SEQ_COL_W / 2
-        kind = node.get("kind", "")
-        nst  = NODE_KIND_STYLES.get(kind, _DEFAULT_NODE_STYLE)
-        label = _e(node.get("label", nid))
-        tech  = _e(node.get("tech", ""))
-
-        parts.append(
-            f'<rect x="{x:.1f}" y="{_SEQ_TOP_PAD}" width="{_SEQ_COL_W}" height="{_SEQ_HEADER_H}" rx="8" '
-            f'fill="{nst["fill"]}" stroke="{nst["stroke"]}" stroke-width="1.5"/>'
-        )
-        lbl_y = _SEQ_TOP_PAD + _SEQ_HEADER_H / 2 - (6 if tech else 0)
-        parts.append(
-            f'<text x="{cx:.1f}" y="{lbl_y:.1f}" text-anchor="middle" dominant-baseline="middle" '
-            f'font-family="ui-serif,Georgia,serif" font-size="12" font-weight="500" fill="#141413">'
-            f'{nst["icon"]} {label}</text>'
-        )
-        if tech:
-            parts.append(
-                f'<text x="{cx:.1f}" y="{_SEQ_TOP_PAD + _SEQ_HEADER_H / 2 + 10:.1f}" '
-                f'text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">'
-                f'{tech}</text>'
-            )
-        # Lifeline
-        parts.append(
-            f'<line x1="{cx:.1f}" y1="{LIFELINE_TOP}" x2="{cx:.1f}" y2="{LIFELINE_BOT}" '
-            f'stroke="#D1CFC5" stroke-width="1" stroke-dasharray="4,4"/>'
-        )
-
-    # Steps
-    for i, step in enumerate(steps):
-        src = step.get("from")
-        dst = step.get("to")
-        if not src or not dst or src not in col_cx or dst not in col_cx:
-            continue
-
-        sx    = col_cx[src]
-        ex    = col_cx[dst]
-        y     = LIFELINE_TOP + (i + 0.5) * _SEQ_STEP_H
-        label = step.get("label", "")
-
-        if src == dst:
-            # Self-loop: small arc to the right
-            r  = 20
-            lx = sx + _SEQ_COL_W / 2 - 10
-            parts.append(
-                f'<path d="M{sx:.1f},{y-10:.1f} Q{lx:.1f},{y-10:.1f} {lx:.1f},{y:.1f} '
-                f'Q{lx:.1f},{y+10:.1f} {sx:.1f},{y+10:.1f}" '
-                f'fill="none" stroke="#D97757" stroke-width="1.5"/>'
-            )
-            if label:
-                parts.append(
-                    f'<text x="{lx+6:.1f}" y="{y+3:.1f}" '
-                    f'font-family="ui-monospace,monospace" font-size="10" fill="#D97757">'
-                    f'{_e(label)}</text>'
-                )
-            continue
-
-        going_right = ex > sx
-
-        # Draw line body (stops short to leave room for arrowhead)
-        tip_x   = ex
-        arrow_d = 7
-        body_ex = ex - arrow_d if going_right else ex + arrow_d
-        parts.append(
-            f'<line x1="{sx:.1f}" y1="{y:.1f}" x2="{body_ex:.1f}" y2="{y:.1f}" '
-            f'stroke="#D97757" stroke-width="1.5"/>'
-        )
-
-        # Explicit arrowhead polygon (avoids SVG marker rotation ambiguity)
-        if going_right:
-            pts = f"{tip_x},{y} {tip_x-arrow_d},{y-4} {tip_x-arrow_d},{y+4}"
-        else:
-            pts = f"{tip_x},{y} {tip_x+arrow_d},{y-4} {tip_x+arrow_d},{y+4}"
-        parts.append(f'<polygon points="{pts}" fill="#D97757"/>')
-
-        # Step label above the arrow
-        if label:
-            mx = (sx + ex) / 2
-            parts.append(
-                f'<text x="{mx:.1f}" y="{y - 7:.1f}" text-anchor="middle" '
-                f'font-family="ui-monospace,monospace" font-size="10" fill="#D97757">'
-                f'{_e(label)}</text>'
-            )
-
-        # Step index at left margin
-        parts.append(
-            f'<text x="{_SEQ_SIDE_PAD - 8:.1f}" y="{y + 4:.1f}" text-anchor="end" '
-            f'font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">{i+1}</text>'
-        )
-
-    parts.append("</svg>")
-    return "\n".join(parts)
-
-
 # ── Behavior / traces view ───────────────────────────────────────────────────
 
 def render_behavior_html(spec: dict) -> str:
@@ -1052,34 +911,6 @@ def render_behavior_html(spec: dict) -> str:
 
     html += '<div id="sys-behavior-traces" class="sys-behavior-traces"></div>'
     html += f'<script type="application/json" id="sys-behavior-data">{payload_json}</script>'
-    html += '</div>'
-    return html
-
-
-def render_sequence_html(spec: dict) -> str:
-    sequences = spec.get("sequences", [])
-    if not sequences:
-        return ""
-
-    node_by_id = {n["id"]: n for n in spec["nodes"]}
-    first_id   = sequences[0]["id"]
-
-    html  = '<div class="sys-seq-wrap">'
-    html += '<div class="sys-seq-controls">'
-    html += '<span class="sys-fl">Sequence</span>'
-    html += '<select class="sys-seq-sel" onchange="sysSeqChange(this)">'
-    for seq in sequences:
-        html += f'<option value="{_e(seq["id"])}">{_e(seq["label"])}</option>'
-    html += '</select>'
-    html += '</div>'
-
-    html += '<div class="sys-seq-diagrams">'
-    for i, seq in enumerate(sequences):
-        display = '' if i == 0 else 'style="display:none"'
-        svg = _render_seq_svg(seq, node_by_id)
-        html += f'<div id="seqp-{_e(seq["id"])}" class="sys-seq-panel" {display}>{svg}</div>'
-    html += '</div>'
-
     html += '</div>'
     return html
 
@@ -1400,14 +1231,6 @@ def render_changes_html(nodes: list) -> str:
 # ── Page assembly ─────────────────────────────────────────────────────────────
 
 _CSS = """
-/* ── Tabs ─────────────────────────────────────── */
-.sys-tabs { display: flex; gap: 0; border-bottom: 1.5px solid var(--gray-300); margin-bottom: 20px; }
-.sys-tab { font-family: var(--mono); font-size: 12px; background: none; border: none;
-           padding: 7px 16px; cursor: pointer; color: var(--gray-500);
-           border-bottom: 2px solid transparent; margin-bottom: -1.5px; transition: color 0.1s; }
-.sys-tab:hover { color: var(--slate); }
-.sys-tab.active { color: var(--slate); border-bottom-color: var(--clay); font-weight: 500; }
-
 /* ── Architecture view ────────────────────────── */
 .sys-wrap { display: flex; gap: 20px; align-items: flex-start; }
 .sys-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -1438,6 +1261,19 @@ _CSS = """
 .sys-tool-btn { font-family: var(--mono); font-size: 11px; border: var(--border); background: var(--white);
             border-radius: 6px; padding: 5px 12px; cursor: pointer; color: var(--slate); }
 .sys-tool-btn:hover { background: var(--gray-100); }
+
+/* ── Query bar (canvas search/highlight) ────────── */
+.sys-querybar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.sys-query-input { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
+            padding: 6px 12px; background: var(--white); color: var(--slate); flex: 1 1 320px; min-width: 200px; }
+.sys-query-status { font-family: var(--mono); font-size: 11px; color: var(--gray-500); }
+
+/* ── Query/trace highlight (canvas) ─────────────── */
+.sys-dim { opacity: 0.18; transition: opacity 0.15s; }
+.sys-trace-highlight .sys-nr, .sys-trace-highlight .sys-er-path {
+    stroke-width: 3px !important;
+    filter: drop-shadow(0 0 4px rgba(217,119,87,0.6));
+}
 
 /* ── Floating panels (on-demand views) ──────────── */
 .sys-float-panel { position: fixed; background: var(--white); border: var(--border); border-radius: 12px;
@@ -1511,14 +1347,6 @@ _CSS = """
 /* ── Layer diagram view ───────────────────────── */
 .sys-layer-wrap { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
 
-/* ── Sequence diagram view ────────────────────── */
-.sys-seq-wrap { display: flex; flex-direction: column; gap: 14px; }
-.sys-seq-controls { display: flex; align-items: center; gap: 10px; }
-.sys-seq-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
-               padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
-               appearance: none; -webkit-appearance: none; }
-.sys-seq-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
-
 /* ── Code detail view ──────────────────────────── */
 .sys-cd-wrap { display: flex; flex-direction: column; gap: 14px; }
 .sys-cd-controls { display: flex; align-items: center; gap: 10px; }
@@ -1586,15 +1414,6 @@ _CSS = """
 """
 
 _JS = """
-/* ── Tab switching ─────────────────────────────── */
-function sysTab(el) {
-    document.querySelectorAll('.sys-tab').forEach(function(t) { t.classList.remove('active'); });
-    document.querySelectorAll('.sys-view').forEach(function(v) { v.style.display = 'none'; });
-    el.classList.add('active');
-    var view = document.getElementById('view-' + el.getAttribute('data-view'));
-    if (view) view.style.display = 'block';
-}
-
 /* ── Node click (architecture, opens/focuses an Inspector panel) ──────── */
 /* Multiple inspector panels can be open at once — clicking a node toggles
    its own panel without closing others. */
@@ -1690,6 +1509,11 @@ var _floatZTop = 200;
 function sysToggleFloatingPanel(type, title) {
     var existing = document.getElementById('float-' + type);
     if (existing) {
+        var existingBody = existing.querySelector('.sys-float-body');
+        var existingTemplate = document.getElementById('tpl-' + type);
+        if (existingBody && existingTemplate) {
+            while (existingBody.firstChild) existingTemplate.appendChild(existingBody.firstChild);
+        }
         existing.remove();
         delete _floatPanels[type];
         return;
@@ -1715,13 +1539,17 @@ function sysToggleFloatingPanel(type, title) {
     closeBtn.className = 'sys-dock-close';
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.textContent = '\\u00d7';
-    closeBtn.onclick = function() { panel.remove(); delete _floatPanels[type]; };
+    closeBtn.onclick = function() {
+        while (body.firstChild) template.appendChild(body.firstChild);
+        panel.remove();
+        delete _floatPanels[type];
+    };
     bar.appendChild(closeBtn);
     panel.appendChild(bar);
 
     var body = document.createElement('div');
     body.className = 'sys-float-body';
-    body.innerHTML = template.innerHTML;
+    while (template.firstChild) body.appendChild(template.firstChild);
     panel.appendChild(body);
 
     panel.addEventListener('mousedown', function() {
@@ -1766,12 +1594,252 @@ function sysOverlayToggle(overlayId) {
     if (overlay) overlay.apply();
 }
 
-/* ── Sequence selector ─────────────────────────── */
-function sysSeqChange(sel) {
-    var val = sel.value;
-    document.querySelectorAll('.sys-seq-panel').forEach(function(p) {
-        p.style.display = (p.id === 'seqp-' + val) ? '' : 'none';
+/* ── Query bar (canvas search / trace exploration) ─────────────────────────── */
+var _sysGraphData = null;
+function sysGraphData() {
+    if (_sysGraphData) return _sysGraphData;
+    var el = document.getElementById('sys-graph-data');
+    _sysGraphData = el ? JSON.parse(el.textContent) : { positions: {}, nodes: [], edges: [] };
+    return _sysGraphData;
+}
+
+var _sysBehaviorData = null;
+function sysBehaviorDataGet() {
+    if (_sysBehaviorData) return _sysBehaviorData;
+    var el = document.getElementById('sys-behavior-data');
+    _sysBehaviorData = el ? JSON.parse(el.textContent) : null;
+    return _sysBehaviorData;
+}
+
+function sysQueryStatus(msg) {
+    var el = document.getElementById('sys-query-status');
+    if (el) el.textContent = msg;
+}
+
+function sysQueryClearAll() {
+    document.querySelectorAll('.sys-node, .sys-edge').forEach(function(el) {
+        el.classList.remove('sys-dim', 'sys-trace-highlight');
     });
+}
+
+function sysQueryClear() {
+    sysQueryClearAll();
+    sysQueryStatus('');
+    var input = document.getElementById('sys-query-input');
+    if (input) input.value = '';
+}
+
+function sysQuerySetHighlight(nodeIds, edgeKeys) {
+    document.querySelectorAll('.sys-node').forEach(function(el) {
+        if (nodeIds.has(el.getAttribute('data-id'))) {
+            el.classList.remove('sys-dim');
+            el.classList.add('sys-trace-highlight');
+        } else {
+            el.classList.add('sys-dim');
+            el.classList.remove('sys-trace-highlight');
+        }
+    });
+    document.querySelectorAll('.sys-edge').forEach(function(el) {
+        var key = el.getAttribute('data-from') + '|' + el.getAttribute('data-to');
+        if (edgeKeys.has(key)) {
+            el.classList.remove('sys-dim');
+            el.classList.add('sys-trace-highlight');
+        } else {
+            el.classList.add('sys-dim');
+            el.classList.remove('sys-trace-highlight');
+        }
+    });
+}
+
+function sysFindNodes(text) {
+    var t = text.toLowerCase();
+    return sysGraphData().nodes.filter(function(n) {
+        return n.id.toLowerCase().indexOf(t) !== -1 || (n.label || '').toLowerCase().indexOf(t) !== -1;
+    });
+}
+
+function sysComponentEdgeKeys(nodeIds) {
+    var edgeKeys = new Set();
+    sysGraphData().edges.forEach(function(e) {
+        if (nodeIds.has(e.from) && nodeIds.has(e.to)) edgeKeys.add(e.from + '|' + e.to);
+    });
+    return edgeKeys;
+}
+
+function sysQueryComponent(text) {
+    var matches = sysFindNodes(text);
+    if (!matches.length) {
+        sysQueryStatus('No component matching "' + text + '"');
+        sysQueryClearAll();
+        return;
+    }
+    var data = sysGraphData();
+    var nodeIds = new Set(matches.map(function(n) { return n.id; }));
+    var edgeKeys = new Set();
+    data.edges.forEach(function(e) {
+        if (nodeIds.has(e.from) || nodeIds.has(e.to)) {
+            edgeKeys.add(e.from + '|' + e.to);
+            nodeIds.add(e.from);
+            nodeIds.add(e.to);
+        }
+    });
+    sysQuerySetHighlight(nodeIds, edgeKeys);
+    sysQueryStatus(matches.length + ' component(s), ' + edgeKeys.size + ' connection(s) highlighted');
+}
+
+function sysGraphPath(fromText, toText) {
+    var data = sysGraphData();
+    var fromMatches = sysFindNodes(fromText);
+    var toMatches = sysFindNodes(toText);
+    if (!fromMatches.length || !toMatches.length) {
+        sysQueryStatus('Could not resolve "' + fromText + '" -> "' + toText + '"');
+        sysQueryClearAll();
+        return;
+    }
+    var fromId = fromMatches[0].id, toId = toMatches[0].id;
+
+    function bfs(adj) {
+        var queue = [[fromId]];
+        var visited = new Set([fromId]);
+        while (queue.length) {
+            var p = queue.shift();
+            var last = p[p.length - 1];
+            if (last === toId) return p;
+            (adj[last] || []).forEach(function(n) {
+                if (!visited.has(n)) { visited.add(n); queue.push(p.concat([n])); }
+            });
+        }
+        return null;
+    }
+
+    var adjDirected = {};
+    data.edges.forEach(function(e) { (adjDirected[e.from] = adjDirected[e.from] || []).push(e.to); });
+    var path = bfs(adjDirected);
+    if (!path) {
+        var adjUndirected = {};
+        data.edges.forEach(function(e) {
+            (adjUndirected[e.from] = adjUndirected[e.from] || []).push(e.to);
+            (adjUndirected[e.to] = adjUndirected[e.to] || []).push(e.from);
+        });
+        path = bfs(adjUndirected);
+    }
+    if (!path) {
+        sysQueryStatus('No path found from ' + fromId + ' to ' + toId);
+        sysQueryClearAll();
+        return;
+    }
+    var nodeIds = new Set(path);
+    var edgeKeys = new Set();
+    for (var i = 0; i < path.length - 1; i++) {
+        edgeKeys.add(path[i] + '|' + path[i + 1]);
+        edgeKeys.add(path[i + 1] + '|' + path[i]);
+    }
+    sysQuerySetHighlight(nodeIds, edgeKeys);
+    sysQueryStatus('Path: ' + path.join(' -> '));
+}
+
+/* All traces reachable from an empty initial state, with no goal (everything
+   ends up in `failed` since goal_fact is null — used here as "all explored
+   traces", not as a literal failure indicator). */
+function sysQueryAllTraces() {
+    var data = sysBehaviorDataGet();
+    if (!data || !data.actions || !data.actions.length) return null;
+    var result = sysDeriveTraces(data.actions, { initial_facts: [], goal_fact: null }, 8, 200);
+    return result.completed.concat(result.failed);
+}
+
+function sysTraceComponents(trace) {
+    var comps = new Set();
+    trace.history.forEach(function(step) {
+        comps.add(step.action.component);
+        (step.action.touches || []).forEach(function(c) { comps.add(c); });
+    });
+    return comps;
+}
+
+function sysQueryFact(name, negate) {
+    var traces = sysQueryAllTraces();
+    if (!traces) { sysQueryStatus('No behavior/actions defined'); sysQueryClearAll(); return; }
+    var matching = traces.filter(function(tr) {
+        var has = tr.state.has(name);
+        return negate ? !has : has;
+    });
+    if (!matching.length) {
+        sysQueryStatus('No traces ' + (negate ? 'excluding ' : 'including ') + '"' + name + '"');
+        sysQueryClearAll();
+        return;
+    }
+    var nodeIds = new Set();
+    matching.forEach(function(tr) { sysTraceComponents(tr).forEach(function(c) { nodeIds.add(c); }); });
+    sysQuerySetHighlight(nodeIds, sysComponentEdgeKeys(nodeIds));
+    sysQueryStatus(matching.length + ' trace(s) ' + (negate ? 'without ' : 'with ') + '"' + name + '" — ' + nodeIds.size + ' component(s) highlighted');
+}
+
+function sysQueryFailure(text) {
+    var traces = sysQueryAllTraces();
+    if (!traces) { sysQueryStatus('No behavior/actions defined'); sysQueryClearAll(); return; }
+    var t = text.toLowerCase();
+    var matching = traces.filter(function(tr) {
+        return tr.history.some(function(step) {
+            var o = step.outcome;
+            if (!o._origin) return false;
+            if (!t) return true;
+            var hay = (o.id + ' ' + o.label + ' ' + (o.emits || []).join(' ')).toLowerCase();
+            return hay.indexOf(t) !== -1;
+        });
+    });
+    if (!matching.length) {
+        sysQueryStatus('No failure traces matching "' + text + '"');
+        sysQueryClearAll();
+        return;
+    }
+    var nodeIds = new Set();
+    matching.forEach(function(tr) { sysTraceComponents(tr).forEach(function(c) { nodeIds.add(c); }); });
+    sysQuerySetHighlight(nodeIds, sysComponentEdgeKeys(nodeIds));
+    sysQueryStatus(matching.length + ' failure trace(s) matching "' + text + '" — ' + nodeIds.size + ' component(s) highlighted');
+}
+
+function sysQueryAction(text) {
+    var traces = sysQueryAllTraces();
+    if (!traces) { sysQueryStatus('No behavior/actions defined'); sysQueryClearAll(); return; }
+    var t = text.toLowerCase();
+    var matching = traces.filter(function(tr) {
+        return tr.history.some(function(step) {
+            return (step.action.id + ' ' + step.action.label).toLowerCase().indexOf(t) !== -1;
+        });
+    });
+    if (!matching.length) {
+        sysQueryStatus('No traces with action matching "' + text + '"');
+        sysQueryClearAll();
+        return;
+    }
+    var nodeIds = new Set();
+    matching.forEach(function(tr) { sysTraceComponents(tr).forEach(function(c) { nodeIds.add(c); }); });
+    sysQuerySetHighlight(nodeIds, sysComponentEdgeKeys(nodeIds));
+    sysQueryStatus(matching.length + ' trace(s) with action matching "' + text + '" — ' + nodeIds.size + ' component(s) highlighted');
+}
+
+function sysQueryRun() {
+    var input = document.getElementById('sys-query-input');
+    if (!input) return;
+    var q = input.value.trim();
+    if (!q) { sysQueryClearAll(); sysQueryStatus(''); return; }
+    var m;
+    if ((m = q.match(/^path\\s*:\\s*(.+?)\\s*->\\s*(.+)$/i))) {
+        sysGraphPath(m[1].trim(), m[2].trim());
+    } else if ((m = q.match(/^component\\s*:\\s*(.+)$/i))) {
+        sysQueryComponent(m[1].trim());
+    } else if ((m = q.match(/^not\\s*:\\s*(.+)$/i))) {
+        sysQueryFact(m[1].trim(), true);
+    } else if ((m = q.match(/^fact\\s*:\\s*(.+)$/i))) {
+        sysQueryFact(m[1].trim(), false);
+    } else if ((m = q.match(/^failure\\s*:\\s*(.+)$/i))) {
+        sysQueryFailure(m[1].trim());
+    } else if ((m = q.match(/^action\\s*:\\s*(.+)$/i))) {
+        sysQueryAction(m[1].trim());
+    } else {
+        sysQueryComponent(q);
+    }
 }
 
 /* ── Code detail selector ──────────────────────── */
@@ -2013,13 +2081,11 @@ def render_system_spec(data: dict) -> str:
     ]
 
     has_layers  = any(g.get("kind") == "layer" for g in spec["groups"])
-    has_seqs    = bool(spec.get("sequences"))
     has_behavior = bool(spec.get("actions"))
     has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in all_nodes)
     has_snippets = any(n.get("code_snippet") for n in all_nodes) or has_changes
 
     layer_svg    = render_layer_svg(spec) if has_layers else ""
-    seq_html     = render_sequence_html(spec) if has_seqs else ""
     behavior_html = render_behavior_html(spec) if has_behavior else ""
     code_detail_html = render_code_detail_html(spec)
     has_code_detail  = bool(code_detail_html)
@@ -2036,21 +2102,17 @@ def render_system_spec(data: dict) -> str:
             '  <script>document.addEventListener("DOMContentLoaded",function(){hljs.highlightAll();});</script>'
         )
 
-    # Tab bar — Layers/Code Detail/Changes/Matrix/Components are now on-demand
-    # floating panels opened from the architecture toolbar (Phase 2). Only
-    # show the tab bar when there's more than one remaining tab.
-    show_tabs = has_seqs or has_behavior
-    tabs = ""
-    if show_tabs:
-        tabs  = '<div class="sys-tabs">'
-        tabs += '<button class="sys-tab active" data-view="arch" onclick="sysTab(this)">Architecture</button>'
-        if has_seqs:
-            tabs += '<button class="sys-tab" data-view="sequences" onclick="sysTab(this)">Sequences</button>'
-        if has_behavior:
-            tabs += '<button class="sys-tab" data-view="behavior" onclick="sysTab(this)">Behavior</button>'
-        tabs += '</div>'
+    graph_json = _graph_data_json(spec, positions)
 
-    positions_json = _node_positions_json(positions)
+    # Query bar — searches/highlights the canvas via sysQueryRun (Phase 3).
+    querybar = '<div class="sys-querybar">'
+    querybar += ('<input type="text" class="sys-query-input" id="sys-query-input" '
+                  'placeholder="component: X | fact: X | not: X | failure: X | action: X | path: A -> B | text"'
+                  ' onkeydown="if(event.key===\'Enter\')sysQueryRun()">')
+    querybar += '<button class="sys-tool-btn" onclick="sysQueryRun()">Search</button>'
+    querybar += '<button class="sys-tool-btn" onclick="sysQueryClear()">Clear</button>'
+    querybar += '<span class="sys-query-status" id="sys-query-status"></span>'
+    querybar += '</div>'
 
     # Toolbar — opens on-demand floating panels for Matrix/Components and,
     # if present, Layers/Code Detail/Changes (Phase 2).
@@ -2063,11 +2125,14 @@ def render_system_spec(data: dict) -> str:
         toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'codedetail\',\'Code Detail\')">Code Detail</button>'
     if has_changes:
         toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'changes\',\'Changes\')">Changes</button>'
+    if has_behavior:
+        toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'traces\',\'Traces\')">Traces</button>'
     toolbar += '</div>'
 
     arch_view = f"""
 <div id="view-arch" class="sys-view">
   {toolbar}
+  {querybar}
   {filter_bar}
   <div class="sys-workspace">
     <div class="sys-left-dock">
@@ -2083,18 +2148,8 @@ def render_system_spec(data: dict) -> str:
   <div id="sys-panel-templates" style="display:none">
     {panels}
   </div>
-  <script type="application/json" id="sys-positions-data">{positions_json}</script>
+  <script type="application/json" id="sys-graph-data">{graph_json}</script>
 </div>"""
-
-    seq_view = f"""
-<div id="view-sequences" class="sys-view" style="display:none">
-  {seq_html}
-</div>""" if has_seqs else ""
-
-    behavior_view = f"""
-<div id="view-behavior" class="sys-view" style="display:none">
-  {behavior_html}
-</div>""" if has_behavior else ""
 
     # On-demand floating panel templates (Phase 2) — hidden until opened via toolbar.
     tpl_layers = f'<div id="tpl-layers" style="display:none"><div class="sys-layer-wrap">{layer_svg}</div></div>' if has_layers else ""
@@ -2102,20 +2157,19 @@ def render_system_spec(data: dict) -> str:
     tpl_changes = f'<div id="tpl-changes" style="display:none">{changes_html}</div>' if has_changes else ""
     tpl_matrix = f'<div id="tpl-matrix" style="display:none">{matrix}</div>'
     tpl_components = f'<div id="tpl-components" style="display:none">{comp_list}</div>'
+    tpl_traces = f'<div id="tpl-traces" style="display:none">{behavior_html}</div>' if has_behavior else ""
 
     js = _JS.replace("__NODE_KIND_STYLES__", _NODE_KIND_STYLES_JSON)
 
     body = f"""
 {desc_html}
-{tabs}
 {arch_view}
-{seq_view}
-{behavior_view}
 {tpl_layers}
 {tpl_codedetail}
 {tpl_changes}
 {tpl_matrix}
 {tpl_components}
+{tpl_traces}
 <script>{js}</script>
 """
 
