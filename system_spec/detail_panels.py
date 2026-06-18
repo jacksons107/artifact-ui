@@ -65,19 +65,29 @@ def render_detail_panels(spec: dict, id_prefix: str = "") -> str:
             if out:
                 html += '<div class="sys-eg-label">Calls / Sends</div>'
                 for e in out:
+                    peer_id = id_prefix + e["to"]
                     peer  = _e(by_id.get(e["to"], {}).get("label", e["to"]))
                     ekind = _e(e.get("kind", ""))
                     elbl  = _e(e.get("label", ""))
                     detail = f"{ekind} · {elbl}" if elbl else ekind
-                    html += f'<div class="sys-er">→ {peer} <span class="sys-ek">{detail}</span></div>'
+                    html += (
+                        f'<div class="sys-er">→ '
+                        f'<a class="sys-er-link" data-target="{_e(peer_id)}" onclick="sysGoTo(this)">{peer}</a> '
+                        f'<span class="sys-ek">{detail}</span></div>'
+                    )
             if inc:
                 html += '<div class="sys-eg-label">Receives From</div>'
                 for e in inc:
+                    peer_id = id_prefix + e["from"]
                     peer  = _e(by_id.get(e["from"], {}).get("label", e["from"]))
                     ekind = _e(e.get("kind", ""))
                     elbl  = _e(e.get("label", ""))
                     detail = f"{ekind} · {elbl}" if elbl else ekind
-                    html += f'<div class="sys-er">← {peer} <span class="sys-ek">{detail}</span></div>'
+                    html += (
+                        f'<div class="sys-er">← '
+                        f'<a class="sys-er-link" data-target="{_e(peer_id)}" onclick="sysGoTo(this)">{peer}</a> '
+                        f'<span class="sys-ek">{detail}</span></div>'
+                    )
             html += '</div>'
 
         signature = node.get("signature", "")

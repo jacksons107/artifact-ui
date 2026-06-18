@@ -40,6 +40,8 @@ _CSS = """
 .sys-eg-label { font-family: var(--mono); font-size: 10px; color: var(--gray-500); margin: 6px 0 3px; }
 .sys-er { font-size: 12px; color: var(--gray-700); display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
 .sys-ek { font-family: var(--mono); font-size: 10px; color: var(--gray-500); }
+.sys-er-link { color: var(--clay); cursor: pointer; text-decoration: none; }
+.sys-er-link:hover { text-decoration: underline; }
 
 /* ── Node interaction ─────────────────────────── */
 .sys-nr { transition: filter 0.12s; }
@@ -150,19 +152,11 @@ function sysTab(el) {
 
 /* ── Node click (architecture detail panel) ─────── */
 var _active = null;
-function sysClick(el) {
+function _selectNode(el) {
     var nid = el.getAttribute('data-id');
     var panel = document.getElementById('panel-' + nid);
     var wrap = el.closest('.sys-wrap');
     var hint = wrap ? wrap.querySelector('.sys-hint') : null;
-
-    if (_active === el) {
-        el.classList.remove('active');
-        _active = null;
-        if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
-        if (hint) hint.style.display = 'block';
-        return;
-    }
 
     if (_active) _active.classList.remove('active');
     if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
@@ -171,6 +165,30 @@ function sysClick(el) {
     _active = el;
     if (hint) hint.style.display = 'none';
     if (panel) panel.style.display = 'block';
+}
+function sysClick(el) {
+    if (_active === el) {
+        el.classList.remove('active');
+        _active = null;
+        var wrap = el.closest('.sys-wrap');
+        var hint = wrap ? wrap.querySelector('.sys-hint') : null;
+        if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+        if (hint) hint.style.display = 'block';
+        return;
+    }
+    _selectNode(el);
+}
+
+/* ── Jump to a referenced node from a detail-panel link ─ */
+function sysGoTo(linkEl) {
+    var targetId = linkEl.getAttribute('data-target');
+    var wrap = linkEl.closest('.sys-wrap');
+    if (!wrap) return;
+    var targetNode = wrap.querySelector('.sys-node[data-id="' + CSS.escape(targetId) + '"]');
+    if (targetNode) {
+        _selectNode(targetNode);
+        targetNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
 }
 
 /* ── Architecture kind + status filters ─────────── */
