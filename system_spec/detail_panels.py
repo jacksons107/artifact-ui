@@ -4,10 +4,11 @@ from .styles import NODE_KIND_STYLES, _DEFAULT_NODE_STYLE, EDGE_KIND_STYLES, _DE
 
 # ── Detail panels ─────────────────────────────────────────────────────────────
 
-def render_detail_panels(spec: dict, id_prefix: str = "") -> str:
+def render_detail_panels(spec: dict, id_prefix: str = "", node_sequences: dict = None) -> str:
     nodes  = spec["nodes"]
     edges  = spec["edges"]
     by_id  = {n["id"]: n for n in nodes}
+    node_sequences = node_sequences or {}
 
     outgoing: dict[str, list] = defaultdict(list)
     incoming: dict[str, list] = defaultdict(list)
@@ -89,6 +90,18 @@ def render_detail_panels(spec: dict, id_prefix: str = "") -> str:
                         f'<span class="sys-ek">{detail}</span></div>'
                     )
             html += '</div>'
+
+        seqs = node_sequences.get(nid, [])
+        if seqs:
+            html += '<div class="sys-edges">'
+            html += '<div class="sys-eg-label">Appears in Sequences</div>'
+            html += '<div class="sys-seq-refs">'
+            for s in seqs:
+                html += (
+                    f'<button class="sys-fc" data-seq="{_e(s["id"])}" data-step="{s["first_step"]}" '
+                    f'onclick="sysPlaySeqFromNode(this)">{_e(s["label"])}</button>'
+                )
+            html += '</div></div>'
 
         signature = node.get("signature", "")
         if signature:

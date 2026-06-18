@@ -8,7 +8,7 @@ from .styles import (
 
 # ── SVG rendering ─────────────────────────────────────────────────────────────
 
-def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") -> str:
+def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "", overlay: str = "") -> str:
     nodes  = spec["nodes"]
     edges  = spec["edges"]
     groups = spec["groups"]
@@ -96,7 +96,7 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
         src_groups = " ".join(node_groups.get(src, []))
         dst_groups = " ".join(node_groups.get(dst, []))
         parts.append(
-            f'<g class="sys-edge" data-kind="{_e(kind)}" '
+            f'<g class="sys-edge" data-kind="{_e(kind)}" data-from="{_e(src)}" data-to="{_e(dst)}" '
             f'data-src-groups="{_e(src_groups)}" data-dst-groups="{_e(dst_groups)}">'
         )
         parts.append(
@@ -171,6 +171,9 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
                 f'{_e(tech)}</text>'
             )
         parts.append("</g>")
+
+    if overlay:
+        parts.append(overlay)
 
     parts.append("</svg>")
     return "\n".join(parts)

@@ -52,9 +52,10 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
         label = _e(node.get("label", nid))
         tech  = _e(node.get("tech", ""))
 
+        parts.append(f'<g class="sys-seq-participant" data-id="{_e(nid)}">')
         parts.append(
             f'<rect x="{x:.1f}" y="{_SEQ_TOP_PAD}" width="{_SEQ_COL_W}" height="{_SEQ_HEADER_H}" rx="8" '
-            f'fill="{nst["fill"]}" stroke="{nst["stroke"]}" stroke-width="1.5"/>'
+            f'fill="{nst["fill"]}" stroke="{nst["stroke"]}" stroke-width="1.5" class="sys-seq-pbox"/>'
         )
         lbl_y = _SEQ_TOP_PAD + _SEQ_HEADER_H / 2 - (6 if tech else 0)
         parts.append(
@@ -68,6 +69,7 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
                 f'text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#87867F">'
                 f'{tech}</text>'
             )
+        parts.append("</g>")
         # Lifeline
         parts.append(
             f'<line x1="{cx:.1f}" y1="{LIFELINE_TOP}" x2="{cx:.1f}" y2="{LIFELINE_BOT}" '
@@ -88,12 +90,10 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
         label = step.get("label", "")
         has_example = bool(step.get("example") or step.get("example_before") or step.get("example_after"))
 
-        if has_example:
-            target = f'step-panel-{_e(seq_id)}-{i}'
-            parts.append(
-                f'<g class="sys-seq-step" data-target="{target}" '
-                f'style="cursor:pointer" onclick="sysSeqStepClick(this)">'
-            )
+        click_attr = f' style="cursor:pointer" data-target="step-panel-{_e(seq_id)}-{i}" onclick="sysSeqStepClick(this)"' if has_example else ""
+        parts.append(
+            f'<g class="sys-seq-step" data-step="{i}" data-from="{_e(src)}" data-to="{_e(dst)}"{click_attr}>'
+        )
 
         if src == dst:
             # Self-loop: small arc to the right
@@ -111,10 +111,9 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
                     f'{_e(label)}</text>'
                 )
             if has_example:
-                parts.append(
-                    f'<circle cx="{lx+6:.1f}" cy="{y-14:.1f}" r="3" fill="#D97757"/>'
-                )
-                parts.append("</g>")
+                parts.append(f'<circle cx="{lx+6:.1f}" cy="{y-14:.1f}" r="3" fill="#D97757"/>')
+            parts.append(f'<circle class="seq-dot" cx="{sx:.1f}" cy="{y-10:.1f}" r="4" fill="#D97757"/>')
+            parts.append("</g>")
             continue
 
         going_right = ex > sx
@@ -154,7 +153,9 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
             # Marker dot indicating an example is available for this step
             mx = (sx + ex) / 2
             parts.append(f'<circle cx="{mx:.1f}" cy="{y - 14:.1f}" r="3" fill="#D97757"/>')
-            parts.append("</g>")
+
+        parts.append(f'<circle class="seq-dot" cx="{sx:.1f}" cy="{y:.1f}" r="4" fill="#D97757"/>')
+        parts.append("</g>")
 
     parts.append("</svg>")
     return "\n".join(parts)
@@ -192,13 +193,45 @@ def _render_step_panel(seq_id: str, i: int, step: dict) -> str:
     return html
 
 
+def render_timeline_widget(target_kind: str, seq_id: str, steps: list) -> str:
+    """Scrub/play control for animating a sequence's steps. target_kind is
+    'arch' (drives the hidden overlay on the architecture diagram) or 'seq'
+    (drives a sequence panel's own step elements)."""
+    n = len(steps)
+    if n == 0:
+        return ""
+
+    html  = f'<div class="sys-timeline" data-target-kind="{_e(target_kind)}" data-seq="{_e(seq_id)}">'
+    html += '<div class="sys-tl-controls">'
+    html += '<button type="button" class="sys-tl-play" onclick="sysTlPlayToggle(this)">▶</button>'
+    html += f'<div class="sys-tl-label">Step 0/{n}</div>'
+    html += '</div>'
+    html += '<div class="sys-tl-track" onclick="sysTlTrackClick(event, this)">'
+    html += '<div class="sys-tl-fill" style="width:0%"></div>'
+    for i, step in enumerate(steps):
+        pct = 0.0 if n == 1 else (i / (n - 1)) * 100
+        html += (
+            f'<div class="sys-tl-tick" data-step="{i}" style="left:{pct:.2f}%" '
+            f'data-label="{_e(step.get("label", ""))}" '
+            f'data-example="{_e(step.get("example", ""))}" '
+            f'data-example-before="{_e(step.get("example_before", ""))}" '
+            f'data-example-after="{_e(step.get("example_after", ""))}" '
+            f'data-example-lang="{_e(step.get("example_lang", "plaintext"))}" '
+            f'onclick="sysTlSeekClick(event, this)"></div>'
+        )
+    html += '<div class="sys-tl-thumb" style="left:0%" onpointerdown="sysTlThumbDown(event, this)"></div>'
+    html += '</div>'
+    html += '<div class="sys-now-playing"><div class="sys-now-playing-label">Select a step to preview it here</div></div>'
+    html += '</div>'
+    return html
+
+
 def render_sequence_html(spec: dict) -> str:
     sequences = spec.get("sequences", [])
     if not sequences:
         return ""
 
     node_by_id = {n["id"]: n for n in spec["nodes"]}
-    first_id   = sequences[0]["id"]
 
     html  = '<div class="sys-seq-wrap">'
     html += '<div class="sys-seq-controls">'
@@ -218,24 +251,27 @@ def render_sequence_html(spec: dict) -> str:
             (j, step) for j, step in enumerate(steps)
             if step.get("example") or step.get("example_before") or step.get("example_after")
         ]
+        timeline = render_timeline_widget("seq", seq["id"], steps)
 
         if example_steps:
             panels = "\n".join(_render_step_panel(seq["id"], j, step) for j, step in example_steps)
             inner = (
                 '<div class="sys-wrap">'
-                f'<div class="sys-main"><div class="sys-diagram">{svg}</div></div>'
+                f'<div class="sys-main"><div class="sys-diagram">{svg}</div>{timeline}</div>'
                 '<div class="sys-sidebar">'
                 '<div class="sys-hint">Click a highlighted step<br>to see an example</div>'
                 f'{panels}'
                 '</div>'
                 '</div>'
             )
-            panel_class = "sys-seq-panel sys-seq-panel-flat"
         else:
-            inner = svg
-            panel_class = "sys-seq-panel"
+            inner = (
+                '<div class="sys-wrap">'
+                f'<div class="sys-main"><div class="sys-diagram">{svg}</div>{timeline}</div>'
+                '</div>'
+            )
 
-        html += f'<div id="seqp-{_e(seq["id"])}" class="{panel_class}" {display}>{inner}</div>'
+        html += f'<div id="seqp-{_e(seq["id"])}" class="sys-seq-panel sys-seq-panel-flat" {display}>{inner}</div>'
     html += '</div>'
 
     html += '</div>'

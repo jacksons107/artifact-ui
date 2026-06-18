@@ -32,6 +32,8 @@ codebase explainer, or system visualization of any kind.
 
 Steps can optionally carry `example` (a single snippet — request body, SQL, event payload) or `example_before`/`example_after` (either or both, rendered as a before/after diff) plus an optional `example_lang` hint — shown in a click-to-reveal panel. Omit entirely when a step doesn't need one.
 
+Any sequence can be played back: each Sequences-tab diagram and the Architecture tab (via an "Animate" control) get a scrub/play timeline that walks through the steps as a traveling pulse, leaving a visited trail. Clicking a node also shows which sequences touch it.
+
 **Node kinds:** `service` `module` `class` `db` `queue` `external` `package` `file` `function`  
 **Edge kinds:** `calls` `imports` `depends` `emits` `subscribes` `reads` `writes` `deploys` `owns`  
 **Group kinds:** `layer` `package` `team` `domain` `deployment`
