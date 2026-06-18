@@ -385,7 +385,8 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
     W = int(max(p["x"] + p["w"] for p in pos.values()) + PAD)
     H = int(max(p["y"] + p["h"] for p in pos.values()) + PAD)
 
-    parts = [f'<svg viewBox="0 0 {W} {H}" style="display:block;width:100%;height:auto;max-height:680px" id="{_e(id_prefix)}sys-svg">']
+    parts = [f'<svg viewBox="0 0 {W} {H}" style="display:block;width:100%;height:auto;max-height:680px"'
+             f' id="{_e(id_prefix)}sys-svg" class="sys-arch-svg">']
 
     # Arrow markers — one per edge color in use
     parts.append("<defs>")
@@ -499,7 +500,9 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
         opacity_attr = ' opacity="0.5"' if status == "deleted" else ""
         parts.append(
             f'<g class="sys-node" data-id="{_e(id_prefix + nid)}" data-kind="{_e(kind)}" data-status="{_e(status)}" '
-            f'style="cursor:pointer"{opacity_attr} onclick="sysClick(this)">'
+            f'style="cursor:pointer"{opacity_attr} onclick="sysClick(event,this)"'
+            f' onmouseenter="sysNodeHover(event,this)" onmouseleave="sysNodeHoverOut()"'
+            f' oncontextmenu="sysNodeContext(event,this)">'
         )
         parts.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{w}" height="{h}" rx="10" '
@@ -542,14 +545,19 @@ def _graph_data_json(spec: dict, positions: dict) -> str:
         for nid, p in positions.items()
     }
     nodes = [
-        {"id": n["id"], "label": n.get("label", n["id"]), "kind": n.get("kind", "")}
+        {"id": n["id"], "label": n.get("label", n["id"]), "kind": n.get("kind", ""),
+         "tech": n.get("tech", ""), "description": n.get("description", "")}
         for n in spec["nodes"]
     ]
     edges = [
         {"from": e.get("from"), "to": e.get("to"), "kind": e.get("kind", ""), "label": e.get("label", "")}
         for e in spec["edges"]
     ]
-    return json.dumps({"positions": centers, "nodes": nodes, "edges": edges})
+    groups = [
+        {"id": g["id"], "label": g.get("label", ""), "kind": g.get("kind", ""), "members": g.get("members", [])}
+        for g in spec.get("groups", [])
+    ]
+    return json.dumps({"positions": centers, "nodes": nodes, "edges": edges, "groups": groups})
 
 
 # ── Detail panels ─────────────────────────────────────────────────────────────
@@ -1299,6 +1307,56 @@ _CSS = """
     text-overflow: ellipsis; white-space: nowrap; }
 .sys-anim-btn { font-size: 10px !important; padding: 3px 8px !important; }
 
+/* ── Pan / zoom ──────────────────────────────────── */
+.sys-arch-svg { cursor: grab; }
+.sys-arch-svg.sys-panning { cursor: grabbing; }
+
+/* ── Overlay toggle buttons ──────────────────────── */
+.sys-ov-active { background: #EEF2FF !important; border-color: #6366F1 !important; color: #4F46E5 !important; }
+.sys-toolbar-sep { display: inline-block; width: 1px; background: var(--gray-200); height: 20px; margin: 0 4px; }
+
+/* ── Overlay: failure paths ──────────────────────── */
+.ov-failure .sys-nr { stroke: #B04A3F !important; stroke-width: 2px;
+    filter: drop-shadow(0 0 3px rgba(176,74,63,0.35)); }
+.ov-fail-edge .sys-er-path { stroke: #B04A3F !important; stroke-width: 2px !important; }
+
+/* ── Overlay: ownership / domain colors ─────────── */
+.ov-owner-0 .sys-nr { stroke: #3B82F6 !important; stroke-width: 2px; }
+.ov-owner-1 .sys-nr { stroke: #7C3AED !important; stroke-width: 2px; }
+.ov-owner-2 .sys-nr { stroke: #059669 !important; stroke-width: 2px; }
+.ov-owner-3 .sys-nr { stroke: #D97706 !important; stroke-width: 2px; }
+.ov-owner-4 .sys-nr { stroke: #DB2777 !important; stroke-width: 2px; }
+.ov-owner-5 .sys-nr { stroke: #0891B2 !important; stroke-width: 2px; }
+
+/* ── Overlay: dataflow ───────────────────────────── */
+.ov-dataflow-hl .sys-er-path { stroke: #3B82F6 !important; stroke-width: 2.5px !important; }
+.ov-dataflow-dim { opacity: 0.15; }
+
+/* ── Multi-select ────────────────────────────────── */
+.sys-selected .sys-nr { stroke: #6366F1 !important; stroke-width: 2.5px !important; }
+
+/* ── Hover tooltip ───────────────────────────────── */
+.sys-tooltip { position: fixed; z-index: 9999; background: #1e1d1b; color: #f0ece4;
+    font-family: var(--mono); font-size: 11px; line-height: 1.5; padding: 8px 12px;
+    border-radius: 8px; max-width: 260px; pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
+
+/* ── Context menu ────────────────────────────────── */
+.sys-ctx-menu { position: fixed; z-index: 9998; background: var(--white); border: var(--border);
+    border-radius: 10px; box-shadow: 0 6px 24px rgba(20,20,19,0.18);
+    font-family: var(--mono); font-size: 12px; min-width: 190px; overflow: hidden; }
+.sys-ctx-item { padding: 9px 16px; cursor: pointer; color: var(--slate); }
+.sys-ctx-item:hover { background: var(--gray-100); }
+.sys-ctx-sep { height: 1px; background: var(--gray-200); margin: 2px 0; }
+
+/* ── Query autocomplete ──────────────────────────── */
+.sys-autocomplete { position: fixed; z-index: 9997; background: var(--white); border: var(--border);
+    border-radius: 10px; box-shadow: 0 6px 20px rgba(20,20,19,0.14);
+    font-family: var(--mono); font-size: 12px; max-height: 260px; overflow-y: auto; }
+.sys-ac-item { padding: 8px 14px; cursor: pointer; color: var(--slate); }
+.sys-ac-item:hover { background: var(--gray-100); }
+.sys-ac-prefix { color: var(--gray-500); }
+
 /* ── Floating panels (on-demand views) ──────────── */
 .sys-float-panel { position: fixed; background: var(--white); border: var(--border); border-radius: 12px;
             box-shadow: 0 10px 32px rgba(20,20,19,0.16); width: min(820px, 90vw); max-height: 80vh;
@@ -1441,7 +1499,14 @@ _JS = """
 /* ── Node click (architecture, opens/focuses an Inspector panel) ──────── */
 /* Multiple inspector panels can be open at once — clicking a node toggles
    its own panel without closing others. */
-function sysClick(el) {
+function sysClick(event, el) {
+    if (!el) return;
+    if (event && event.shiftKey) {
+        event.stopPropagation();
+        sysSelectionToggle(el);
+        return;
+    }
+    sysSelectionClear();
     var nid = el.getAttribute('data-id');
     var existing = document.getElementById('inspector-' + nid);
     if (existing) {
@@ -2160,6 +2225,278 @@ function sysStateExpApply(actionId, outcomeId) {
     sysStateExpRender();
 }
 
+/* ── Phase 5: pan/zoom, multi-select, tooltip, context menu, overlays, autocomplete ─── */
+
+/* Pan / zoom ─────────────────────────────────────── */
+var _vp = { x: 0, y: 0, scale: 1 };
+var _vpDrag = { active: false, sx: 0, sy: 0, ox: 0, oy: 0 };
+
+function sysVpApply() {
+    var g = document.getElementById('sys-viewport') || document.querySelector('[id$="sys-viewport"]');
+    if (g) g.setAttribute('transform', 'translate(' + _vp.x.toFixed(1) + ',' + _vp.y.toFixed(1) + ') scale(' + _vp.scale.toFixed(4) + ')');
+}
+function sysVpReset() { _vp = { x: 0, y: 0, scale: 1 }; sysVpApply(); }
+
+/* Multi-select ───────────────────────────────────── */
+var _selection = new Set();
+
+function sysSelectionToggle(el) {
+    var nid = el.getAttribute('data-id');
+    if (_selection.has(nid)) { _selection.delete(nid); el.classList.remove('sys-selected'); }
+    else                      { _selection.add(nid);   el.classList.add('sys-selected'); }
+    sysSelectionUpdate();
+}
+function sysSelectionClear() {
+    _selection.clear();
+    document.querySelectorAll('.sys-node.sys-selected').forEach(function(el) { el.classList.remove('sys-selected'); });
+}
+function sysSelectionUpdate() {
+    if (_selection.size === 2) {
+        var ids = Array.from(_selection);
+        sysGraphPath(ids[0], ids[1]);
+    } else if (_selection.size === 1) {
+        sysQueryStatus(Array.from(_selection)[0] + ' selected — shift-click another node to find path');
+    } else if (_selection.size > 2) {
+        sysQueryStatus(_selection.size + ' nodes selected');
+    }
+}
+
+/* Hover tooltip ──────────────────────────────────── */
+function sysNodeHover(event, el) {
+    var nid = el.getAttribute('data-id');
+    var node = sysGraphData().nodes.find(function(n) { return n.id === nid; });
+    if (!node) return;
+    var tip = document.getElementById('sys-tooltip');
+    if (!tip) return;
+    var html = '<strong>' + sysEsc(node.label || nid) + '</strong>';
+    if (node.kind) html += ' <span style="opacity:0.55">(' + sysEsc(node.kind) + ')</span>';
+    if (node.tech) html += '<br>' + sysEsc(node.tech);
+    if (node.description) html += '<br><span style="opacity:0.75">' + sysEsc(node.description.slice(0, 100) + (node.description.length > 100 ? '\\u2026' : '')) + '</span>';
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    sysTooltipPos(event.clientX, event.clientY);
+}
+function sysNodeHoverOut() {
+    var tip = document.getElementById('sys-tooltip');
+    if (tip) tip.style.display = 'none';
+}
+function sysTooltipPos(cx, cy) {
+    var tip = document.getElementById('sys-tooltip');
+    if (!tip) return;
+    var x = cx + 14, y = cy - 10;
+    if (x + 270 > window.innerWidth) x = cx - 220;
+    if (y + 80 > window.innerHeight) y = cy - 80;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+}
+
+/* Context menu ───────────────────────────────────── */
+var _ctxNid = null;
+function sysNodeContext(event, el) {
+    event.preventDefault();
+    _ctxNid = el.getAttribute('data-id');
+    var node = sysGraphData().nodes.find(function(n) { return n.id === _ctxNid; });
+    var label = node ? sysEsc(node.label || _ctxNid) : sysEsc(_ctxNid);
+    var menu = document.getElementById('sys-ctx-menu');
+    if (!menu) return;
+    menu.innerHTML =
+        '<div class="sys-ctx-item" onclick="sysCtxInspect()">Inspect <strong>' + label + '</strong></div>' +
+        '<div class="sys-ctx-item" onclick="sysCtxConnections()">Show connections</div>' +
+        (sysBehaviorDataGet() ? '<div class="sys-ctx-item" onclick="sysCtxFailures()">Show failure paths through this</div>' : '') +
+        '<div class="sys-ctx-sep"></div>' +
+        '<div class="sys-ctx-item" onclick="sysCtxCopyId()">Copy id</div>';
+    menu.style.display = 'block';
+    var x = event.clientX + 2, y = event.clientY + 2;
+    if (x + 210 > window.innerWidth)  x = event.clientX - 210;
+    if (y + 150 > window.innerHeight) y = event.clientY - 150;
+    menu.style.left = x + 'px';
+    menu.style.top  = y + 'px';
+}
+function sysCtxHide() { var m = document.getElementById('sys-ctx-menu'); if (m) m.style.display = 'none'; }
+function sysCtxInspect() {
+    sysCtxHide();
+    if (!_ctxNid) return;
+    var el = document.querySelector('.sys-node[data-id="' + _ctxNid + '"]');
+    if (el) { sysSelectionClear(); sysClick(null, el); }
+}
+function sysCtxConnections() {
+    sysCtxHide();
+    var input = document.getElementById('sys-query-input');
+    if (input) input.value = 'component: ' + (_ctxNid || '');
+    sysQueryRun();
+}
+function sysCtxFailures() {
+    sysCtxHide();
+    if (!_ctxNid) return;
+    var traces = sysQueryAllTraces();
+    if (!traces) { sysQueryStatus('No behavior data'); return; }
+    var matching = traces.filter(function(tr) {
+        return tr.history.some(function(step) {
+            return !!step.outcome._origin &&
+                   (step.action.component === _ctxNid || (step.action.touches || []).indexOf(_ctxNid) !== -1);
+        });
+    });
+    if (!matching.length) { sysQueryStatus('No failure traces through ' + _ctxNid); sysQueryClearAll(); return; }
+    var nodeIds = new Set();
+    matching.forEach(function(tr) { sysTraceComponents(tr).forEach(function(c) { nodeIds.add(c); }); });
+    sysQuerySetHighlight(nodeIds, sysComponentEdgeKeys(nodeIds));
+    sysQueryStatus(matching.length + ' failure trace(s) through ' + _ctxNid + ' — ' + nodeIds.size + ' component(s)');
+}
+function sysCtxCopyId() {
+    sysCtxHide();
+    if (_ctxNid && navigator.clipboard) navigator.clipboard.writeText(_ctxNid).catch(function(){});
+}
+
+/* Overlays ───────────────────────────────────────── */
+var _overlayState = {};
+var _OV_OWNER_COLORS = ['ov-owner-0','ov-owner-1','ov-owner-2','ov-owner-3','ov-owner-4','ov-owner-5'];
+var _OV_DATAFLOW_KINDS = { reads:1, writes:1, emits:1, subscribes:1, owns:1, streams:1 };
+
+function sysOverlayNew(id) {
+    _overlayState[id] = !_overlayState[id];
+    var on = !!_overlayState[id];
+    document.querySelectorAll('[data-overlay="' + id + '"]').forEach(function(b) { b.classList.toggle('sys-ov-active', on); });
+    if (id === 'failure-paths') {
+        document.querySelectorAll('.sys-node').forEach(function(e) { e.classList.remove('ov-failure'); });
+        document.querySelectorAll('.sys-edge').forEach(function(e) { e.classList.remove('ov-fail-edge'); });
+        if (!on) return;
+        var traces = sysQueryAllTraces();
+        if (!traces) return;
+        var comps = new Set(), edges = new Set();
+        traces.filter(function(tr) {
+            return tr.history.some(function(s) { return !!s.outcome._origin; });
+        }).forEach(function(tr) {
+            tr.history.forEach(function(s) {
+                comps.add(s.action.component);
+                var peers = (s.action.touches || []).filter(function(t) { return t !== s.action.component; });
+                if (peers.length) { comps.add(peers[0]); edges.add(s.action.component + '|' + peers[0]); }
+            });
+        });
+        document.querySelectorAll('.sys-node').forEach(function(e) { if (comps.has(e.getAttribute('data-id'))) e.classList.add('ov-failure'); });
+        document.querySelectorAll('.sys-edge').forEach(function(e) {
+            if (edges.has(e.getAttribute('data-from') + '|' + e.getAttribute('data-to'))) e.classList.add('ov-fail-edge');
+        });
+    } else if (id === 'ownership') {
+        _OV_OWNER_COLORS.forEach(function(c) { document.querySelectorAll('.' + c).forEach(function(e) { e.classList.remove(c); }); });
+        if (!on) return;
+        var gi = 0;
+        (sysGraphData().groups || []).filter(function(g) { return g.kind === 'domain' || g.kind === 'team'; })
+        .forEach(function(g) {
+            var cls = _OV_OWNER_COLORS[gi++ % _OV_OWNER_COLORS.length];
+            (g.members || []).forEach(function(mid) {
+                var n = document.querySelector('.sys-node[data-id="' + mid + '"]');
+                if (n) n.classList.add(cls);
+            });
+        });
+    } else if (id === 'dataflow') {
+        document.querySelectorAll('.sys-edge').forEach(function(e) { e.classList.remove('ov-dataflow-hl','ov-dataflow-dim'); });
+        if (!on) return;
+        document.querySelectorAll('.sys-edge').forEach(function(e) {
+            var k = e.getAttribute('data-kind') || '';
+            e.classList.add(_OV_DATAFLOW_KINDS[k] ? 'ov-dataflow-hl' : 'ov-dataflow-dim');
+        });
+    }
+}
+
+/* Query autocomplete ─────────────────────────────── */
+function sysQuerySuggest() {
+    var input   = document.getElementById('sys-query-input');
+    var suggest = document.getElementById('sys-query-suggest');
+    if (!input || !suggest) return;
+    var q = input.value;
+    if (!q.trim()) { suggest.style.display = 'none'; return; }
+
+    var data  = sysGraphData();
+    var bdata = sysBehaviorDataGet();
+    var items = [];
+    var colonIdx = q.indexOf(':');
+
+    if (colonIdx === -1) {
+        ['component: ','fact: ','not: ','failure: ','action: ','path: '].forEach(function(p) {
+            if (p.toLowerCase().startsWith(q.toLowerCase())) items.push({ label: p, value: p });
+        });
+        var qt = q.toLowerCase();
+        (data.nodes || []).filter(function(n) {
+            return n.id.toLowerCase().indexOf(qt) !== -1 || (n.label||'').toLowerCase().indexOf(qt) !== -1;
+        }).slice(0, 6).forEach(function(n) {
+            items.push({ label: (n.label||n.id) + ' (' + n.kind + ')', value: 'component: ' + n.id });
+        });
+    } else {
+        var pfx   = q.slice(0, colonIdx).trim().toLowerCase();
+        var after = q.slice(colonIdx + 1).trim().toLowerCase();
+        if (pfx === 'component' || pfx === '') {
+            (data.nodes || []).filter(function(n) {
+                return !after || n.id.toLowerCase().indexOf(after) !== -1 || (n.label||'').toLowerCase().indexOf(after) !== -1;
+            }).slice(0, 8).forEach(function(n) {
+                items.push({ label: 'component: ' + (n.label||n.id), value: 'component: ' + n.id });
+            });
+        } else if (pfx === 'path') {
+            (data.nodes || []).slice(0, 5).forEach(function(n) {
+                items.push({ label: 'path: ' + (n.label||n.id) + ' -> ...', value: 'path: ' + n.id + ' -> ' });
+            });
+        } else if ((pfx === 'fact' || pfx === 'not') && bdata) {
+            (bdata.facts || []).filter(function(f) {
+                return !after || f.id.toLowerCase().indexOf(after) !== -1 || (f.label||'').toLowerCase().indexOf(after) !== -1;
+            }).slice(0, 8).forEach(function(f) {
+                items.push({ label: pfx + ': ' + (f.label||f.id), value: pfx + ': ' + f.id });
+            });
+        } else if (pfx === 'action' && bdata) {
+            (bdata.actions || []).filter(function(a) {
+                return !after || a.id.toLowerCase().indexOf(after) !== -1 || (a.label||'').toLowerCase().indexOf(after) !== -1;
+            }).slice(0, 8).forEach(function(a) {
+                items.push({ label: 'action: ' + (a.label||a.id), value: 'action: ' + a.id });
+            });
+        } else if (pfx === 'failure' && bdata) {
+            var seen = {};
+            (bdata.actions || []).forEach(function(a) {
+                (a.outcomes || []).filter(function(o) { return o._origin; }).forEach(function(o) {
+                    if (!seen[o.id] && (!after || o.id.toLowerCase().indexOf(after) !== -1)) {
+                        seen[o.id] = true;
+                        items.push({ label: 'failure: ' + (o.label||o.id), value: 'failure: ' + o.id });
+                    }
+                });
+            });
+            items = items.slice(0, 8);
+        }
+    }
+
+    if (!items.length) { suggest.style.display = 'none'; return; }
+    suggest.innerHTML = items.map(function(item) {
+        return '<div class="sys-ac-item" data-val="' + sysEsc(item.value) + '" onclick="sysAcPick(this)">' + sysEsc(item.label) + '</div>';
+    }).join('');
+    var rect = input.getBoundingClientRect();
+    suggest.style.left  = rect.left + 'px';
+    suggest.style.top   = (rect.bottom + 2) + 'px';
+    suggest.style.width = Math.max(rect.width, 280) + 'px';
+    suggest.style.display = 'block';
+}
+
+function sysAcPick(el) {
+    var input   = document.getElementById('sys-query-input');
+    var suggest = document.getElementById('sys-query-suggest');
+    if (input) { input.value = el.getAttribute('data-val'); input.focus(); }
+    if (suggest) suggest.style.display = 'none';
+}
+
+/* Keyboard shortcuts ─────────────────────────────── */
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        sysQueryClearAll();
+        sysQueryStatus('');
+        sysSelectionClear();
+        sysCtxHide();
+        var s = document.getElementById('sys-query-suggest');
+        if (s) s.style.display = 'none';
+    }
+});
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#sys-ctx-menu'))      sysCtxHide();
+    if (!e.target.closest('#sys-query-suggest') && !e.target.closest('#sys-query-input')) {
+        var s = document.getElementById('sys-query-suggest');
+        if (s) s.style.display = 'none';
+    }
+});
+
 /* ── Code detail selector ──────────────────────── */
 function sysCodeDetailChange(sel) {
     var val = sel.value;
@@ -2383,6 +2720,41 @@ function sysBehaviorRender() {
 
 document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('sys-behavior-data')) sysBehaviorRender();
+
+    /* Pan / zoom — attach to main architecture SVG */
+    var svg = document.querySelector('.sys-arch-svg');
+    if (svg) {
+        svg.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            var rect = svg.getBoundingClientRect();
+            var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            var factor = e.deltaY > 0 ? 0.88 : 1.12;
+            var ns = Math.max(0.15, Math.min(5, _vp.scale * factor));
+            _vp.x = mx - (mx - _vp.x) * (ns / _vp.scale);
+            _vp.y = my - (my - _vp.y) * (ns / _vp.scale);
+            _vp.scale = ns;
+            sysVpApply();
+        }, { passive: false });
+
+        svg.addEventListener('pointerdown', function(e) {
+            if (e.button !== 0 || e.target.closest('.sys-node')) return;
+            _vpDrag.active = true;
+            _vpDrag.sx = e.clientX; _vpDrag.sy = e.clientY;
+            _vpDrag.ox = _vp.x;    _vpDrag.oy = _vp.y;
+            svg.classList.add('sys-panning');
+            svg.setPointerCapture(e.pointerId);
+        });
+        svg.addEventListener('pointermove', function(e) {
+            if (!_vpDrag.active) return;
+            _vp.x = _vpDrag.ox + (e.clientX - _vpDrag.sx);
+            _vp.y = _vpDrag.oy + (e.clientY - _vpDrag.sy);
+            sysVpApply();
+        });
+        svg.addEventListener('pointerup', function() {
+            _vpDrag.active = false;
+            svg.classList.remove('sys-panning');
+        });
+    }
 });
 """
 
@@ -2401,7 +2773,8 @@ def render_system_spec(data: dict) -> str:
         n for g in spec["groups"] for n in g.get("detail", {}).get("nodes", [])
     ]
 
-    has_layers  = any(g.get("kind") == "layer" for g in spec["groups"])
+    has_layers  = any(g.get("kind") == "layer"           for g in spec["groups"])
+    has_domains = any(g.get("kind") in ("domain","team") for g in spec["groups"])
     has_behavior = bool(spec.get("actions"))
     has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in all_nodes)
     has_snippets = any(n.get("code_snippet") for n in all_nodes) or has_changes
@@ -2428,12 +2801,14 @@ def render_system_spec(data: dict) -> str:
     # Query bar — searches/highlights the canvas via sysQueryRun (Phase 3).
     querybar = '<div class="sys-querybar">'
     querybar += ('<input type="text" class="sys-query-input" id="sys-query-input" '
-                  'placeholder="component: X | fact: X | not: X | failure: X | action: X | path: A -> B | text"'
-                  ' onkeydown="if(event.key===\'Enter\')sysQueryRun()">')
+                  'placeholder="component: X | fact: X | path: A -> B | failure: X | ..."'
+                  ' onkeydown="if(event.key===\'Enter\'){sysQueryRun();this.blur()}"'
+                  ' oninput="sysQuerySuggest()" autocomplete="off">')
     querybar += '<button class="sys-tool-btn" onclick="sysQueryRun()">Search</button>'
     querybar += '<button class="sys-tool-btn" onclick="sysQueryClear()">Clear</button>'
     querybar += '<span class="sys-query-status" id="sys-query-status"></span>'
     querybar += '</div>'
+    querybar += '<div id="sys-query-suggest" class="sys-autocomplete" style="display:none"></div>'
 
     # Toolbar — opens on-demand floating panels for Matrix/Components and,
     # if present, Layers/Code Detail/Changes (Phase 2).
@@ -2449,6 +2824,13 @@ def render_system_spec(data: dict) -> str:
     if has_behavior:
         toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'traces\',\'Traces\')">Traces</button>'
         toolbar += '<button class="sys-tool-btn" onclick="sysToggleFloatingPanel(\'stateexplorer\',\'State Explorer\');sysStateExpRender()">Explore</button>'
+    toolbar += '<span class="sys-toolbar-sep"></span>'
+    toolbar += '<button class="sys-tool-btn" data-overlay="dataflow" onclick="sysOverlayNew(\'dataflow\')">Dataflow</button>'
+    if has_behavior:
+        toolbar += '<button class="sys-tool-btn" data-overlay="failure-paths" onclick="sysOverlayNew(\'failure-paths\')">Failures</button>'
+    if has_domains:
+        toolbar += '<button class="sys-tool-btn" data-overlay="ownership" onclick="sysOverlayNew(\'ownership\')">Ownership</button>'
+    toolbar += '<button class="sys-tool-btn" onclick="sysVpReset()" title="Reset pan/zoom">&#8635;</button>'
     toolbar += '</div>'
 
     arch_view = f"""
@@ -2481,6 +2863,8 @@ def render_system_spec(data: dict) -> str:
     {panels}
   </div>
   <script type="application/json" id="sys-graph-data">{graph_json}</script>
+  <div id="sys-tooltip" class="sys-tooltip" style="display:none"></div>
+  <div id="sys-ctx-menu" class="sys-ctx-menu" style="display:none"></div>
 </div>"""
 
     # On-demand floating panel templates (Phase 2) — hidden until opened via toolbar.
