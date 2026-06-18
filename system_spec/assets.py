@@ -45,7 +45,9 @@ _CSS = """
 .sys-nr { transition: filter 0.12s; }
 .sys-node:hover .sys-nr { filter: brightness(0.94); }
 .sys-node.active .sys-nr { stroke-width: 2.5px !important; filter: brightness(0.91); }
-.sys-node.filtered-out { opacity: 0.12; pointer-events: none; }
+.sys-node.filtered-out,
+.sys-edge.filtered-out,
+.sys-group.filtered-out { opacity: 0.12; pointer-events: none; }
 
 /* ── Hint / placeholder ───────────────────────── */
 .sys-hint { color: var(--gray-500); font-size: 12px; text-align: center; padding: 32px 16px;
@@ -180,19 +182,60 @@ function sysAStatus(btn) {
     btn.classList.toggle('active');
     _applyArchFilter();
 }
+function sysAEKind(btn) {
+    btn.classList.toggle('active');
+    _applyArchFilter();
+}
+function sysAGroup(btn) {
+    btn.classList.toggle('active');
+    _applyArchFilter();
+}
 function _applyArchFilter() {
     var kinds = new Set();
     document.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) { kinds.add(b.getAttribute('data-ak')); });
     var statuses = new Set();
     document.querySelectorAll('.sys-fc[data-as].active').forEach(function(b) { statuses.add(b.getAttribute('data-as')); });
+    var ekinds = new Set();
+    document.querySelectorAll('.sys-fc[data-aek].active').forEach(function(b) { ekinds.add(b.getAttribute('data-aek')); });
+    var agroups = new Set();
+    document.querySelectorAll('.sys-fc[data-ag].active').forEach(function(b) { agroups.add(b.getAttribute('data-ag')); });
     var hasKindFilter   = document.querySelectorAll('.sys-fc[data-ak]').length > 0;
     var hasStatusFilter = document.querySelectorAll('.sys-fc[data-as]').length > 0;
+    var hasEKindFilter  = document.querySelectorAll('.sys-fc[data-aek]').length > 0;
+    var hasGroupFilter  = document.querySelectorAll('.sys-fc[data-ag]').length > 0;
+
+    // Groups explicitly toggled off (not just "none active" -> show-all fallback)
+    var inactiveGroups = new Set();
+    if (hasGroupFilter && agroups.size > 0) {
+        document.querySelectorAll('.sys-fc[data-ag]').forEach(function(b) {
+            var gid = b.getAttribute('data-ag');
+            if (!agroups.has(gid)) inactiveGroups.add(gid);
+        });
+    }
+    function _inInactiveGroup(groupsAttr) {
+        if (inactiveGroups.size === 0 || !groupsAttr) return false;
+        return groupsAttr.split(' ').some(function(gid) { return gid && inactiveGroups.has(gid); });
+    }
+
     document.querySelectorAll('.sys-node').forEach(function(n) {
         var k = n.getAttribute('data-kind');
         var s = n.getAttribute('data-status') || '';
         var kOk = !hasKindFilter   || kinds.size === 0    || kinds.has(k);
         var sOk = !hasStatusFilter || statuses.size === 0 || !s || statuses.has(s);
-        n.classList.toggle('filtered-out', !(kOk && sOk));
+        var groupFaded = _inInactiveGroup(n.getAttribute('data-groups'));
+        n.classList.toggle('filtered-out', !(kOk && sOk) || groupFaded);
+    });
+    document.querySelectorAll('.sys-edge').forEach(function(e) {
+        var k = e.getAttribute('data-kind');
+        var eOk = !hasEKindFilter || ekinds.size === 0 || ekinds.has(k);
+        var groupFaded = _inInactiveGroup(e.getAttribute('data-src-groups')) ||
+                          _inInactiveGroup(e.getAttribute('data-dst-groups'));
+        e.classList.toggle('filtered-out', !eOk || groupFaded);
+    });
+    document.querySelectorAll('.sys-group').forEach(function(g) {
+        var gid = g.getAttribute('data-gid');
+        var gOk = !hasGroupFilter || agroups.size === 0 || agroups.has(gid);
+        g.classList.toggle('filtered-out', !gOk);
     });
 }
 

@@ -20,6 +20,12 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
     W = int(max(p["x"] + p["w"] for p in pos.values()) + PAD)
     H = int(max(p["y"] + p["h"] for p in pos.values()) + PAD)
 
+    # Full group membership (a node may belong to more than one group)
+    node_groups: dict = {}
+    for g in groups:
+        for m in g.get("members", []):
+            node_groups.setdefault(m, []).append(g["id"])
+
     parts = [f'<svg viewBox="0 0 {W} {H}" style="display:block;width:100%;height:auto;max-height:680px" id="{_e(id_prefix)}sys-svg">']
 
     # Arrow markers — one per edge color in use
@@ -52,6 +58,7 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
         gkind  = group.get("kind", "")
         gst    = GROUP_KIND_STYLES.get(gkind, _DEFAULT_GROUP_STYLE)
         label  = _e(group.get("label", group["id"]))
+        parts.append(f'<g class="sys-group" data-gid="{_e(group["id"])}">')
         parts.append(
             f'<rect x="{gx0:.1f}" y="{gy0:.1f}" width="{gw:.1f}" height="{gh:.1f}" rx="12" '
             f'fill="{gst["fill"]}" stroke="{gst["stroke"]}" stroke-width="1" stroke-dasharray="5,3"/>'
@@ -61,6 +68,7 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
             f'font-family="ui-monospace,monospace" font-size="10" fill="{gst["stroke"]}" opacity="0.9">'
             f'{label}</text>'
         )
+        parts.append("</g>")
 
     # Edges
     for edge in edges:
@@ -85,6 +93,12 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
         dash   = ' stroke-dasharray="6,4"' if dashed else ""
         cid    = color.replace("#", "")
 
+        src_groups = " ".join(node_groups.get(src, []))
+        dst_groups = " ".join(node_groups.get(dst, []))
+        parts.append(
+            f'<g class="sys-edge" data-kind="{_e(kind)}" '
+            f'data-src-groups="{_e(src_groups)}" data-dst-groups="{_e(dst_groups)}">'
+        )
         parts.append(
             f'<path d="M{sx:.1f},{sy:.1f} C{cx1:.1f},{cy1:.1f} {cx2:.1f},{cy2:.1f} {ex:.1f},{ey:.1f}" '
             f'fill="none" stroke="{color}" stroke-width="1.5"{dash} marker-end="url(#arr-{cid})"/>'
@@ -105,6 +119,7 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
                 f'font-family="ui-monospace,monospace" font-size="10" fill="{color}">'
                 f'{_e(label)}</text>'
             )
+        parts.append("</g>")
 
     # Nodes
     for node in nodes:
@@ -125,8 +140,10 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "") ->
             fill   = nst["fill"]
         icon = nst["icon"]
         opacity_attr = ' opacity="0.5"' if status == "deleted" else ""
+        node_group_str = " ".join(node_groups.get(nid, []))
         parts.append(
             f'<g class="sys-node" data-id="{_e(id_prefix + nid)}" data-kind="{_e(kind)}" data-status="{_e(status)}" '
+            f'data-groups="{_e(node_group_str)}" '
             f'style="cursor:pointer"{opacity_attr} onclick="sysClick(this)">'
         )
         parts.append(
