@@ -38,7 +38,7 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "", ov
     colors_used.add(_DEFAULT_EDGE_STYLE["color"])  # ensure default is always available
 
     for color in colors_used:
-        cid = color.replace("#", "")
+        cid = _e(id_prefix) + color.replace("#", "")
         parts.append(
             f'<marker id="arr-{cid}" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
             f'<path d="M0,0 L0,7 L7,3.5 z" fill="{color}"/></marker>'
@@ -91,12 +91,12 @@ def render_architecture_svg(spec: dict, positions: dict, id_prefix: str = "", ov
         color  = estyle["color"]
         dashed = estyle["dashed"] or bool(edge.get("async", False))
         dash   = ' stroke-dasharray="6,4"' if dashed else ""
-        cid    = color.replace("#", "")
+        cid    = _e(id_prefix) + color.replace("#", "")
 
         src_groups = " ".join(node_groups.get(src, []))
         dst_groups = " ".join(node_groups.get(dst, []))
         parts.append(
-            f'<g class="sys-edge" data-kind="{_e(kind)}" data-from="{_e(src)}" data-to="{_e(dst)}" '
+            f'<g class="sys-edge" data-kind="{_e(kind)}" data-from="{_e(id_prefix + src)}" data-to="{_e(id_prefix + dst)}" '
             f'data-src-groups="{_e(src_groups)}" data-dst-groups="{_e(dst_groups)}">'
         )
         parts.append(

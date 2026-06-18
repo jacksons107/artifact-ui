@@ -1,10 +1,12 @@
 from .styles import _e
 from .validation import parse_spec
 from .layout import layout_graph
-from .svg_architecture import render_architecture_svg
-from .detail_panels import render_detail_panels, render_legend
+from .arch_block import render_diagram_block
 
 # ── Code detail tab ───────────────────────────────────────────────────────────
+# Each module gets the exact same diagram type as the Architecture tab
+# (filter bar, sequence animation overlay, detail panels) — just scoped to
+# that group's own nodes/edges/groups/sequences, switched via a dropdown.
 
 def render_code_detail_html(spec: dict) -> str:
     detail_groups = [g for g in spec["groups"] if g.get("detail", {}).get("nodes")]
@@ -22,27 +24,18 @@ def render_code_detail_html(spec: dict) -> str:
     for i, g in enumerate(detail_groups):
         detail = g["detail"]
         sub = parse_spec({
-            "title": g.get("label", g["id"]),
-            "nodes": detail["nodes"],
-            "edges": detail.get("edges", []),
+            "title":      g.get("label", g["id"]),
+            "nodes":      detail["nodes"],
+            "edges":      detail.get("edges", []),
+            "groups":     detail.get("groups", []),
+            "sequences":  detail.get("sequences", []),
         })
-        positions = layout_graph(sub["nodes"], sub["edges"], [])
+        positions = layout_graph(sub["nodes"], sub["edges"], sub["groups"])
         prefix = f'cd-{g["id"]}-'
-        svg    = render_architecture_svg(sub, positions, id_prefix=prefix)
-        panels = render_detail_panels(sub, id_prefix=prefix)
-        legend = render_legend(sub)
+        block  = render_diagram_block(sub, positions, id_prefix=prefix)
 
         display = '' if i == 0 else ' style="display:none"'
-        html += f'<div id="cdp-{_e(g["id"])}" class="sys-cd-panel"{display}>'
-        html += '<div class="sys-wrap">'
-        html += '<div class="sys-main"><div class="sys-diagram">' + svg + '</div></div>'
-        html += '<div class="sys-sidebar">'
-        html += '<div class="sys-hint">Click a node<br>to see details</div>'
-        html += panels
-        html += legend
-        html += '</div>'
-        html += '</div>'
-        html += '</div>'
+        html += f'<div id="cdp-{_e(g["id"])}" class="sys-cd-panel"{display}>{block}</div>'
 
     html += '</div>'
     return html

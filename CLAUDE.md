@@ -34,6 +34,8 @@ Steps can optionally carry `example` (a single snippet — request body, SQL, ev
 
 Any sequence can be played back: each Sequences-tab diagram and the Architecture tab (via an "Animate" control) get a scrub/play timeline that walks through the steps as a traveling pulse, leaving a visited trail. Clicking a node also shows which sequences touch it.
 
+A group's optional `detail` block (`nodes`, `edges`, and optionally its own `groups`/`sequences`) gets a Code Detail tab entry that is the exact same diagram type as the Architecture tab — filter bar, group toggles, sequence animation overlay, detail panels — just scoped to that group's own elements, selectable via a module dropdown.
+
 **Node kinds:** `service` `module` `class` `db` `queue` `external` `package` `file` `function`  
 **Edge kinds:** `calls` `imports` `depends` `emits` `subscribes` `reads` `writes` `deploys` `owns`  
 **Group kinds:** `layer` `package` `team` `domain` `deployment`

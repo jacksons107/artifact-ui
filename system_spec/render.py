@@ -3,66 +3,23 @@ from design_system import page_wrapper
 from .styles import _e
 from .validation import parse_spec
 from .layout import layout_graph
-from .svg_architecture import render_architecture_svg
-from .detail_panels import render_detail_panels, render_legend
-from .filter_bar import render_filter_bar
 from .matrix import render_matrix_html, render_component_list_html
 from .layer_diagram import render_layer_svg
-from .sequence_diagram import render_sequence_html, render_timeline_widget
-from .seq_overlay import render_sequence_overlay_svg
+from .sequence_diagram import render_sequence_html
+from .arch_block import render_diagram_block
 from .code_detail import render_code_detail_html
 from .changes import render_changes_html
 from .assets import _CSS, _JS
-
-
-def _build_node_sequences(spec: dict) -> dict:
-    node_sequences: dict = {}
-    for seq in spec.get("sequences", []):
-        seen_for_seq = set()
-        for i, step in enumerate(seq.get("steps", [])):
-            for nid in (step.get("from"), step.get("to")):
-                if nid and nid not in seen_for_seq:
-                    seen_for_seq.add(nid)
-                    node_sequences.setdefault(nid, []).append(
-                        {"id": seq["id"], "label": seq.get("label", seq["id"]), "first_step": i}
-                    )
-    return node_sequences
-
-
-def _build_arch_animate_block(spec: dict) -> str:
-    sequences = spec.get("sequences", [])
-    if not sequences:
-        return ""
-    html  = '<div class="sys-arch-animate">'
-    html += '<div class="sys-seq-controls">'
-    html += '<span class="sys-fl">Animate</span>'
-    html += '<select class="sys-seq-sel" onchange="sysArchSeqChange(this)">'
-    html += '<option value="">None</option>'
-    for seq in sequences:
-        html += f'<option value="{_e(seq["id"])}">{_e(seq["label"])}</option>'
-    html += '</select>'
-    html += '</div>'
-    for seq in sequences:
-        tl = render_timeline_widget("arch", seq["id"], seq.get("steps", []))
-        html += f'<div class="sys-atl-block" data-seq="{_e(seq["id"])}" style="display:none">{tl}</div>'
-    html += '</div>'
-    return html
 
 
 def render_system_spec(data: dict) -> str:
     spec       = parse_spec(data)
     positions  = layout_graph(spec["nodes"], spec["edges"], spec["groups"])
 
-    has_seqs    = bool(spec.get("sequences"))
-    overlay     = render_sequence_overlay_svg(spec, positions) if has_seqs else ""
-    arch_svg    = render_architecture_svg(spec, positions, overlay=overlay)
-    node_seqs   = _build_node_sequences(spec) if has_seqs else {}
-    panels      = render_detail_panels(spec, node_sequences=node_seqs)
-    legend      = render_legend(spec)
-    filter_bar  = render_filter_bar(spec)
-    animate_blk = _build_arch_animate_block(spec)
-    comp_list   = render_component_list_html(spec)
-    matrix      = render_matrix_html(spec)
+    arch_block = render_diagram_block(spec, positions)
+    comp_list  = render_component_list_html(spec)
+    matrix     = render_matrix_html(spec)
+    has_seqs   = bool(spec.get("sequences"))
 
     all_nodes = spec["nodes"] + [
         n for g in spec["groups"] for n in g.get("detail", {}).get("nodes", [])
@@ -106,18 +63,7 @@ def render_system_spec(data: dict) -> str:
 
     arch_view = f"""
 <div id="view-arch" class="sys-view">
-  {filter_bar}
-  {animate_blk}
-  <div class="sys-wrap">
-    <div class="sys-main">
-      <div class="sys-diagram">{arch_svg}</div>
-    </div>
-    <div class="sys-sidebar">
-      <div id="sys-hint" class="sys-hint">Click a node<br>to see details</div>
-      {panels}
-      {legend}
-    </div>
-  </div>
+  {arch_block}
 </div>"""
 
     layer_view = f"""

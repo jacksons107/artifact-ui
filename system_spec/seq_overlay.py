@@ -2,7 +2,7 @@ from .styles import _e
 
 # ── Sequence playback overlay (hidden step paths drawn on the architecture diagram) ──
 
-def render_sequence_overlay_svg(spec: dict, positions: dict) -> str:
+def render_sequence_overlay_svg(spec: dict, positions: dict, id_prefix: str = "") -> str:
     sequences = spec.get("sequences", [])
     if not sequences or not positions:
         return ""
@@ -17,10 +17,10 @@ def render_sequence_overlay_svg(spec: dict, positions: dict) -> str:
             if src not in positions or dst not in positions:
                 continue
 
-            gid = f"ov-{seq_id}-{i}"
+            gid = f"ov-{id_prefix}{seq_id}-{i}"
             parts.append(
                 f'<g class="seq-step-ov" id="{_e(gid)}" data-seq="{_e(seq_id)}" data-step="{i}" '
-                f'data-from="{_e(src)}" data-to="{_e(dst)}" style="opacity:0">'
+                f'data-from="{_e(id_prefix + src)}" data-to="{_e(id_prefix + dst)}" style="opacity:0">'
             )
 
             if src == dst:

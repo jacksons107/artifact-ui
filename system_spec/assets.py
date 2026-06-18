@@ -274,7 +274,8 @@ function _tlSteps(timeline) {
     var seqId = timeline.getAttribute('data-seq');
     var list;
     if (kind === 'arch') {
-        list = document.querySelectorAll('.seq-step-ov[data-seq="' + CSS.escape(seqId) + '"]');
+        var scope = timeline.closest('.sys-arch-scope');
+        list = scope ? scope.querySelectorAll('.seq-step-ov[data-seq="' + CSS.escape(seqId) + '"]') : [];
     } else {
         var wrap = timeline.closest('.sys-wrap');
         list = wrap ? wrap.querySelectorAll('.sys-seq-step') : [];
@@ -288,7 +289,8 @@ function _tlNodeFor(timeline, nodeId) {
     if (!nodeId) return null;
     var kind = timeline.getAttribute('data-target-kind');
     if (kind === 'arch') {
-        return document.querySelector('#view-arch .sys-node[data-id="' + CSS.escape(nodeId) + '"]');
+        var scope = timeline.closest('.sys-arch-scope');
+        return scope ? scope.querySelector('.sys-node[data-id="' + CSS.escape(nodeId) + '"]') : null;
     }
     var wrap = timeline.closest('.sys-wrap');
     return wrap ? wrap.querySelector('.sys-seq-participant[data-id="' + CSS.escape(nodeId) + '"]') : null;
@@ -383,7 +385,7 @@ function _tlGoToStep(timeline, newIdx, animate) {
     });
 
     var scopeNodes = kind === 'arch'
-        ? document.querySelectorAll('#view-arch .sys-node')
+        ? (timeline.closest('.sys-arch-scope') ? timeline.closest('.sys-arch-scope').querySelectorAll('.sys-node') : [])
         : (timeline.closest('.sys-wrap') ? timeline.closest('.sys-wrap').querySelectorAll('.sys-seq-participant') : []);
     scopeNodes.forEach(function(n) { n.classList.remove('seq-visited', 'seq-active'); });
     steps.forEach(function(stepEl, idx) {
@@ -433,7 +435,7 @@ function _tlReset(timeline) {
         if (kind === 'arch') s.style.opacity = '0';
     });
     var scopeNodes = kind === 'arch'
-        ? document.querySelectorAll('#view-arch .sys-node')
+        ? (timeline.closest('.sys-arch-scope') ? timeline.closest('.sys-arch-scope').querySelectorAll('.sys-node') : [])
         : (timeline.closest('.sys-wrap') ? timeline.closest('.sys-wrap').querySelectorAll('.sys-seq-participant') : []);
     scopeNodes.forEach(function(n) { n.classList.remove('seq-visited', 'seq-active'); });
 }
@@ -507,20 +509,20 @@ function sysTlThumbDown(evt, thumb) {
 }
 
 /* ── Architecture-tab sequence animator selector ── */
-function _archApplyScopeFade(seqId) {
+function _archApplyScopeFade(scope, seqId) {
     var touched = new Set();
     if (seqId) {
-        document.querySelectorAll('.seq-step-ov[data-seq="' + CSS.escape(seqId) + '"]').forEach(function(g) {
+        scope.querySelectorAll('.seq-step-ov[data-seq="' + CSS.escape(seqId) + '"]').forEach(function(g) {
             var f = g.getAttribute('data-from'), t = g.getAttribute('data-to');
             if (f) touched.add(f);
             if (t) touched.add(t);
         });
     }
-    document.querySelectorAll('#view-arch .sys-node').forEach(function(n) {
+    scope.querySelectorAll('.sys-node').forEach(function(n) {
         var nid = n.getAttribute('data-id');
         n.classList.toggle('seq-unrelated', !!seqId && !touched.has(nid));
     });
-    document.querySelectorAll('#view-arch .sys-edge').forEach(function(e) {
+    scope.querySelectorAll('.sys-edge').forEach(function(e) {
         var f = e.getAttribute('data-from'), t = e.getAttribute('data-to');
         var related = touched.has(f) && touched.has(t);
         e.classList.toggle('seq-unrelated', !!seqId && !related);
@@ -528,8 +530,10 @@ function _archApplyScopeFade(seqId) {
 }
 
 function sysArchSeqChange(sel) {
+    var scope = sel.closest('.sys-arch-scope');
+    if (!scope) return;
     var val = sel.value;
-    document.querySelectorAll('.sys-atl-block').forEach(function(b) {
+    scope.querySelectorAll('.sys-atl-block').forEach(function(b) {
         var match = val !== '' && b.getAttribute('data-seq') === val;
         b.style.display = match ? '' : 'none';
         if (!match) {
@@ -537,24 +541,23 @@ function sysArchSeqChange(sel) {
             if (tl) _tlReset(tl);
         }
     });
-    _archApplyScopeFade(val);
+    _archApplyScopeFade(scope, val);
 }
 
 /* ── Jump to a sequence from a node's detail panel ── */
 function sysPlaySeqFromNode(btn) {
+    var scope = btn.closest('.sys-arch-scope');
+    if (!scope) return;
     var seqId = btn.getAttribute('data-seq');
     var stepIdx = parseInt(btn.getAttribute('data-step'), 10);
 
-    var tabBtn = document.querySelector('.sys-tab[data-view="arch"]');
-    if (tabBtn) sysTab(tabBtn);
-
-    var sel = document.querySelector('.sys-arch-animate .sys-seq-sel');
+    var sel = scope.querySelector('.sys-arch-animate .sys-seq-sel');
     if (sel && sel.value !== seqId) {
         sel.value = seqId;
         sysArchSeqChange(sel);
     }
 
-    var block = document.querySelector('.sys-atl-block[data-seq="' + CSS.escape(seqId) + '"]');
+    var block = scope.querySelector('.sys-atl-block[data-seq="' + CSS.escape(seqId) + '"]');
     var timeline = block ? block.querySelector('.sys-timeline') : null;
     if (timeline) {
         _tlStopPlay(timeline);
@@ -566,39 +569,40 @@ function sysPlaySeqFromNode(btn) {
 /* ── Architecture kind + status filters ─────────── */
 function sysAKind(btn) {
     btn.classList.toggle('active');
-    _applyArchFilter();
+    _applyArchFilter(btn.closest('.sys-arch-scope'));
 }
 function sysAStatus(btn) {
     btn.classList.toggle('active');
-    _applyArchFilter();
+    _applyArchFilter(btn.closest('.sys-arch-scope'));
 }
 function sysAEKind(btn) {
     btn.classList.toggle('active');
-    _applyArchFilter();
+    _applyArchFilter(btn.closest('.sys-arch-scope'));
 }
 function sysAGroup(btn) {
     btn.classList.toggle('active');
-    _applyArchFilter();
+    _applyArchFilter(btn.closest('.sys-arch-scope'));
 }
-function _applyArchFilter() {
+function _applyArchFilter(scope) {
+    if (!scope) return;
     var kinds = new Set();
-    document.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) { kinds.add(b.getAttribute('data-ak')); });
+    scope.querySelectorAll('.sys-fc[data-ak].active').forEach(function(b) { kinds.add(b.getAttribute('data-ak')); });
     var statuses = new Set();
-    document.querySelectorAll('.sys-fc[data-as].active').forEach(function(b) { statuses.add(b.getAttribute('data-as')); });
+    scope.querySelectorAll('.sys-fc[data-as].active').forEach(function(b) { statuses.add(b.getAttribute('data-as')); });
     var ekinds = new Set();
-    document.querySelectorAll('.sys-fc[data-aek].active').forEach(function(b) { ekinds.add(b.getAttribute('data-aek')); });
+    scope.querySelectorAll('.sys-fc[data-aek].active').forEach(function(b) { ekinds.add(b.getAttribute('data-aek')); });
     var agroups = new Set();
-    document.querySelectorAll('.sys-fc[data-ag].active').forEach(function(b) { agroups.add(b.getAttribute('data-ag')); });
-    var hasKindFilter   = document.querySelectorAll('.sys-fc[data-ak]').length > 0;
-    var hasStatusFilter = document.querySelectorAll('.sys-fc[data-as]').length > 0;
-    var hasEKindFilter  = document.querySelectorAll('.sys-fc[data-aek]').length > 0;
-    var hasGroupFilter  = document.querySelectorAll('.sys-fc[data-ag]').length > 0;
+    scope.querySelectorAll('.sys-fc[data-ag].active').forEach(function(b) { agroups.add(b.getAttribute('data-ag')); });
+    var hasKindFilter   = scope.querySelectorAll('.sys-fc[data-ak]').length > 0;
+    var hasStatusFilter = scope.querySelectorAll('.sys-fc[data-as]').length > 0;
+    var hasEKindFilter  = scope.querySelectorAll('.sys-fc[data-aek]').length > 0;
+    var hasGroupFilter  = scope.querySelectorAll('.sys-fc[data-ag]').length > 0;
 
     // Groups not currently active — if none are active, every group counts as inactive
     // (so deselecting all group toggles fades all groups, rather than showing everything).
     var inactiveGroups = new Set();
     if (hasGroupFilter) {
-        document.querySelectorAll('.sys-fc[data-ag]').forEach(function(b) {
+        scope.querySelectorAll('.sys-fc[data-ag]').forEach(function(b) {
             var gid = b.getAttribute('data-ag');
             if (!agroups.has(gid)) inactiveGroups.add(gid);
         });
@@ -609,7 +613,7 @@ function _applyArchFilter() {
     }
 
     var hiddenNodes = new Set();
-    document.querySelectorAll('.sys-node').forEach(function(n) {
+    scope.querySelectorAll('.sys-node').forEach(function(n) {
         var k = n.getAttribute('data-kind');
         var s = n.getAttribute('data-status') || '';
         var kOk = !hasKindFilter   || (kinds.size > 0 && kinds.has(k));
@@ -619,7 +623,7 @@ function _applyArchFilter() {
         n.classList.toggle('filtered-out', hidden);
         if (hidden) hiddenNodes.add(n.getAttribute('data-id'));
     });
-    document.querySelectorAll('.sys-edge').forEach(function(e) {
+    scope.querySelectorAll('.sys-edge').forEach(function(e) {
         var k = e.getAttribute('data-kind');
         var eOk = !hasEKindFilter || (ekinds.size > 0 && ekinds.has(k));
         var groupFaded = _inInactiveGroup(e.getAttribute('data-src-groups')) ||
@@ -627,7 +631,7 @@ function _applyArchFilter() {
         var endpointHidden = hiddenNodes.has(e.getAttribute('data-from')) || hiddenNodes.has(e.getAttribute('data-to'));
         e.classList.toggle('filtered-out', !eOk || groupFaded || endpointHidden);
     });
-    document.querySelectorAll('.sys-group').forEach(function(g) {
+    scope.querySelectorAll('.sys-group').forEach(function(g) {
         var gid = g.getAttribute('data-gid');
         var gOk = !hasGroupFilter || (agroups.size > 0 && agroups.has(gid));
         g.classList.toggle('filtered-out', !gOk);

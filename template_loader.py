@@ -60,13 +60,18 @@ def build_tool_description() -> str:
         '      "label": "Frontend",\n'
         '      "kind": "layer",       // layer | package | team | domain | deployment\n'
         '      "members": ["ui", "client"],\n'
-        '      // optional — nested code-level spec for this group, shown in a\n'
-        '      // "Code Detail" tab with a per-group dropdown. Same node/edge\n'
-        '      // shape as the top level, own id namespace, code-level kinds/fields.\n'
+        '      // optional — nested spec for this group, shown in a "Code Detail" tab\n'
+        '      // with a per-group dropdown. It is the SAME diagram type as the\n'
+        '      // top-level Architecture view (filter bar, sequence animation, detail\n'
+        '      // panels) — just scoped to this group\'s own nodes. Same nodes/edges/\n'
+        '      // groups/sequences shape as the top level, own id namespace, typically\n'
+        '      // code-level kinds/fields.\n'
         '      "detail": {\n'
         '        "nodes": [{"id": "handler", "label": "handle_request()", "kind": "function",\n'
         '                   "signature": "def handle_request(req) -> Response", "code_snippet": "..."}],\n'
-        '        "edges": [{"from": "handler", "to": "handler", "kind": "calls"}]\n'
+        '        "edges": [{"from": "handler", "to": "handler", "kind": "calls"}],\n'
+        '        "groups": [],     // optional — same shape as top-level groups\n'
+        '        "sequences": []   // optional — same shape as top-level sequences\n'
         "      }\n"
         "    }\n"
         "  ],\n"
@@ -121,8 +126,10 @@ def build_tool_description() -> str:
         "                   reveal panel (snippet or before/after diff) — optional, per step.\n"
         "                   Each diagram also has a scrub/play timeline that animates the\n"
         "                   steps in order (traveling pulse along each call, visited trail).\n"
-        "Code Detail tab    Per-group function/class drill-down with a module dropdown\n"
-        "                   (only if any group has a 'detail' block).\n"
+        "Code Detail tab    Per-group drill-down with a module dropdown (only if any group\n"
+        "                   has a 'detail' block) — each module is the full Architecture-\n"
+        "                   tab experience (filter bar, Animate control, detail panels)\n"
+        "                   scoped to that group's own nodes/edges/groups/sequences.\n"
         "Changes tab        Before/after diff view grouped by added/modified/deleted\n"
         "                   (checks top-level nodes AND group 'detail' nodes).\n"
         "Matrix tab         Adjacency matrix — who calls whom at a glance.\n"

@@ -253,6 +253,47 @@
             "to": "watched_source_mtime",
             "kind": "calls"
           }
+        ],
+        "sequences": [
+          {
+            "id": "persist_flow",
+            "label": "render_artifact(path=...) persists in place",
+            "steps": [
+              {
+                "from": "render_artifact_handler",
+                "to": "spec_path_for",
+                "label": "spec_path_for(dest)",
+                "example_before": "Path('index.html')",
+                "example_after": "Path('index.spec.json')",
+                "example_lang": "python"
+              },
+              {
+                "from": "render_artifact_handler",
+                "to": "render_artifact_handler",
+                "label": "write rendered_html + json.dumps(data) to both paths",
+                "example": "dest.write_text(rendered_html)\nspec_path_for(dest).write_text(json.dumps(data, indent=2))",
+                "example_lang": "python"
+              }
+            ]
+          },
+          {
+            "id": "hot_reload_detail",
+            "label": "Hot reload on the next tool call",
+            "steps": [
+              {
+                "from": "maybe_hot_reload",
+                "to": "watched_source_mtime",
+                "label": "compute max mtime across watched files"
+              },
+              {
+                "from": "watched_source_mtime",
+                "to": "maybe_hot_reload",
+                "label": "mtime advanced -> purge & re-import",
+                "example": "for mod in ('system_spec', 'template_loader', ...):\n    del sys.modules[mod]\nimport system_spec",
+                "example_lang": "python"
+              }
+            ]
+          }
         ]
       }
     },
@@ -346,7 +387,7 @@
             "kind": "function",
             "tech": "Python",
             "file_path": "system_spec/code_detail.py",
-            "description": "For each group with a 'detail' block, renders a nested mini architecture diagram + detail panels (using id_prefix), selectable via a 'Module' dropdown \u2014 this is the Code Detail tab you're reading right now.",
+            "description": "For each group with a 'detail' block, parses a sub-spec (nodes/edges/groups/sequences) and calls render_diagram_block() on it \u2014 the exact same diagram as Architecture, just scoped \u2014 selectable via a 'Module' dropdown. This is the Code Detail tab you're reading right now.",
             "signature": "def render_code_detail_html(spec: dict) -> str"
           },
           {
@@ -359,22 +400,31 @@
             "signature": "def render_changes_html(nodes: list) -> str"
           },
           {
-            "id": "build_node_sequences",
-            "label": "_build_node_sequences()",
+            "id": "render_diagram_block",
+            "label": "render_diagram_block()",
             "kind": "function",
             "tech": "Python",
-            "file_path": "system_spec/render.py",
+            "file_path": "system_spec/arch_block.py",
+            "description": "Shared builder for one full architecture-diagram unit (filter bar, sequence animation overlay, SVG, detail panels, legend), parameterized by id_prefix. Used identically by the top-level Architecture tab AND by every Code Detail module panel, so a module's diagram is the exact same component as Architecture, not a separate stripped-down thing.",
+            "signature": "def render_diagram_block(spec, positions, id_prefix=\"\") -> str"
+          },
+          {
+            "id": "build_node_sequences",
+            "label": "build_node_sequences()",
+            "kind": "function",
+            "tech": "Python",
+            "file_path": "system_spec/arch_block.py",
             "description": "Maps each node id to the sequences that touch it (id, label, first_step), feeding render_detail_panels' 'Appears in Sequences' section.",
-            "signature": "def _build_node_sequences(spec: dict) -> dict"
+            "signature": "def build_node_sequences(spec: dict) -> dict"
           },
           {
             "id": "build_arch_animate_block",
-            "label": "_build_arch_animate_block()",
+            "label": "build_animate_block()",
             "kind": "function",
             "tech": "Python",
-            "file_path": "system_spec/render.py",
-            "description": "Builds the Architecture tab's 'Animate' dropdown (with a 'None' option first to hide the scrubber entirely) plus one hidden-by-default timeline block per sequence.",
-            "signature": "def _build_arch_animate_block(spec: dict) -> str"
+            "file_path": "system_spec/arch_block.py",
+            "description": "Builds the 'Animate' dropdown (with a 'None' option first to hide the scrubber entirely) plus one hidden-by-default timeline block per sequence.",
+            "signature": "def build_animate_block(spec: dict) -> str"
           },
           {
             "id": "render_system_spec",
@@ -382,7 +432,7 @@
             "kind": "function",
             "tech": "Python",
             "file_path": "system_spec/render.py",
-            "description": "Top-level orchestrator. Parses + lays out the spec, builds the sequence overlay and node-sequence map, renders every tab, and inserts Layers/Sequences/Code Detail/Changes tabs only when the spec has content for them.",
+            "description": "Top-level orchestrator. Parses + lays out the spec, calls render_diagram_block() once for the top-level Architecture tab, renders every other tab, and inserts Layers/Sequences/Code Detail/Changes tabs only when the spec has content for them.",
             "signature": "def render_system_spec(data: dict) -> str"
           }
         ],
@@ -399,32 +449,7 @@
           },
           {
             "from": "render_system_spec",
-            "to": "render_sequence_overlay_svg",
-            "kind": "calls"
-          },
-          {
-            "from": "render_system_spec",
-            "to": "render_architecture_svg",
-            "kind": "calls"
-          },
-          {
-            "from": "render_system_spec",
-            "to": "build_node_sequences",
-            "kind": "calls"
-          },
-          {
-            "from": "render_system_spec",
-            "to": "render_detail_panels",
-            "kind": "calls"
-          },
-          {
-            "from": "render_system_spec",
-            "to": "render_filter_bar",
-            "kind": "calls"
-          },
-          {
-            "from": "render_system_spec",
-            "to": "build_arch_animate_block",
+            "to": "render_diagram_block",
             "kind": "calls"
           },
           {
@@ -440,6 +465,36 @@
           {
             "from": "render_system_spec",
             "to": "render_changes_html",
+            "kind": "calls"
+          },
+          {
+            "from": "render_diagram_block",
+            "to": "render_sequence_overlay_svg",
+            "kind": "calls"
+          },
+          {
+            "from": "render_diagram_block",
+            "to": "render_architecture_svg",
+            "kind": "calls"
+          },
+          {
+            "from": "render_diagram_block",
+            "to": "build_node_sequences",
+            "kind": "calls"
+          },
+          {
+            "from": "render_diagram_block",
+            "to": "render_detail_panels",
+            "kind": "calls"
+          },
+          {
+            "from": "render_diagram_block",
+            "to": "render_filter_bar",
+            "kind": "calls"
+          },
+          {
+            "from": "render_diagram_block",
+            "to": "build_arch_animate_block",
             "kind": "calls"
           },
           {
@@ -459,13 +514,63 @@
           },
           {
             "from": "render_code_detail_html",
-            "to": "render_architecture_svg",
+            "to": "render_diagram_block",
             "kind": "calls"
+          }
+        ],
+        "sequences": [
+          {
+            "id": "render_arch_tab",
+            "label": "Render the Architecture tab",
+            "steps": [
+              {
+                "from": "render_system_spec",
+                "to": "parse_spec",
+                "label": "validate spec",
+                "example_before": "{\"nodes\": [...], \"edges\": [...]}",
+                "example_after": "{\"nodes\": [...], \"edges\": [...], \"node_ids\": {...}}",
+                "example_lang": "json"
+              },
+              {
+                "from": "parse_spec",
+                "to": "layout_graph",
+                "label": "assign node positions (Kahn's longest-path)"
+              },
+              {
+                "from": "layout_graph",
+                "to": "render_diagram_block",
+                "label": "build filter bar + svg + panels"
+              },
+              {
+                "from": "render_diagram_block",
+                "to": "render_architecture_svg",
+                "label": "draw nodes/edges/groups + overlay"
+              }
+            ]
           },
           {
-            "from": "render_code_detail_html",
-            "to": "render_detail_panels",
-            "kind": "calls"
+            "id": "render_cd_tab",
+            "label": "Render the Code Detail tab (this sequence)",
+            "steps": [
+              {
+                "from": "render_code_detail_html",
+                "to": "parse_spec",
+                "label": "validate each group's own detail.nodes/edges/groups/sequences"
+              },
+              {
+                "from": "parse_spec",
+                "to": "layout_graph",
+                "label": "lay out this module's nodes only"
+              },
+              {
+                "from": "layout_graph",
+                "to": "render_diagram_block",
+                "label": "render the SAME diagram type as Architecture, scoped to this module",
+                "example_before": "render_architecture_svg(sub, positions, id_prefix)  // old: stripped-down, no filters/sequences",
+                "example_after": "render_diagram_block(sub, positions, id_prefix)  // full filter bar + animate + panels",
+                "example_lang": "python"
+              }
+            ]
           }
         ]
       }
@@ -555,6 +660,35 @@
             "to": "node_concept",
             "kind": "depends",
             "label": "steps reference node ids"
+          }
+        ],
+        "sequences": [
+          {
+            "id": "author_a_spec",
+            "label": "Author a spec with a nested Code Detail block",
+            "steps": [
+              {
+                "from": "edge_concept",
+                "to": "node_concept",
+                "label": "from/to must be a known node id",
+                "example": "{\"from\": \"ui\", \"to\": \"api\", \"kind\": \"calls\"}",
+                "example_lang": "json"
+              },
+              {
+                "from": "group_concept",
+                "to": "group_detail_concept",
+                "label": "give a group an optional nested spec",
+                "example": "\"detail\": {\"nodes\": [...], \"groups\": [...], \"sequences\": [...]}",
+                "example_lang": "json"
+              },
+              {
+                "from": "group_detail_concept",
+                "to": "sequence_concept",
+                "label": "detail.sequences validated against this detail's OWN node ids \u2014 exactly how this sequence you're watching right now was authored",
+                "example": "\"sequences\": [{\"id\": \"seq\", \"label\": \"Seq\", \"steps\": [{\"from\": \"x\", \"to\": \"y\"}]}]",
+                "example_lang": "json"
+              }
+            ]
           }
         ]
       }

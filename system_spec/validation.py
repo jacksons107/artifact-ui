@@ -26,6 +26,34 @@ def _validate_nodes_edges(nodes: list, edges: list, context: str) -> set:
     return node_ids
 
 
+def _validate_groups(groups: list, node_ids: set, context: str) -> None:
+    for i, group in enumerate(groups):
+        if "id" not in group:
+            raise ValueError(f"{context}groups[{i}] is missing required field 'id'.")
+        if "label" not in group:
+            raise ValueError(f"{context}groups[{i}] (id={group['id']!r}) is missing required field 'label'.")
+        for member in group.get("members", []):
+            if member not in node_ids:
+                raise ValueError(
+                    f"{context}groups[{i}] (id={group['id']!r}): member {member!r} is not a known node id."
+                )
+
+
+def _validate_sequences(seqs: list, node_ids: set, context: str) -> None:
+    for i, seq in enumerate(seqs):
+        if "id" not in seq:
+            raise ValueError(f"{context}sequences[{i}] is missing required field 'id'.")
+        if "label" not in seq:
+            raise ValueError(f"{context}sequences[{i}] (id={seq['id']!r}) is missing required field 'label'.")
+        for j, step in enumerate(seq.get("steps", [])):
+            for field in ("from", "to"):
+                val = step.get(field)
+                if val and val not in node_ids:
+                    raise ValueError(
+                        f"{context}sequences[{i}].steps[{j}]: {field!r} references unknown node id {val!r}."
+                    )
+
+
 def parse_spec(data: dict) -> dict:
     title  = data.get("title", "Untitled System")
     nodes  = data.get("nodes", [])
@@ -37,36 +65,19 @@ def parse_spec(data: dict) -> dict:
         raise ValueError("system_spec requires at least one node in 'nodes'.")
 
     node_ids = _validate_nodes_edges(nodes, edges, "")
+    _validate_groups(groups, node_ids, "")
+    _validate_sequences(seqs, node_ids, "")
 
     for i, group in enumerate(groups):
-        if "id" not in group:
-            raise ValueError(f"groups[{i}] is missing required field 'id'.")
-        if "label" not in group:
-            raise ValueError(f"groups[{i}] (id={group['id']!r}) is missing required field 'label'.")
-        for member in group.get("members", []):
-            if member not in node_ids:
-                raise ValueError(
-                    f"groups[{i}] (id={group['id']!r}): member {member!r} is not a known node id."
-                )
         detail = group.get("detail")
-        if detail:
-            _validate_nodes_edges(
-                detail.get("nodes", []), detail.get("edges", []),
-                f"groups[{i}] (id={group['id']!r}).detail."
-            )
-
-    for i, seq in enumerate(seqs):
-        if "id" not in seq:
-            raise ValueError(f"sequences[{i}] is missing required field 'id'.")
-        if "label" not in seq:
-            raise ValueError(f"sequences[{i}] (id={seq['id']!r}) is missing required field 'label'.")
-        for j, step in enumerate(seq.get("steps", [])):
-            for field in ("from", "to"):
-                val = step.get(field)
-                if val and val not in node_ids:
-                    raise ValueError(
-                        f"sequences[{i}].steps[{j}]: {field!r} references unknown node id {val!r}."
-                    )
+        if not detail:
+            continue
+        ctx = f"groups[{i}] (id={group['id']!r}).detail."
+        detail_node_ids = _validate_nodes_edges(
+            detail.get("nodes", []), detail.get("edges", []), ctx
+        )
+        _validate_groups(detail.get("groups", []), detail_node_ids, ctx)
+        _validate_sequences(detail.get("sequences", []), detail_node_ids, ctx)
 
     return {
         "title":       title,
