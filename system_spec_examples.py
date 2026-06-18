@@ -120,7 +120,11 @@ EXAMPLES = {
                     {"from": "client",              "to": "auth_router",          "label": "POST /auth/login"},
                     {"from": "auth_router",         "to": "issue_token_pair",     "label": "issue pair"},
                     {"from": "issue_token_pair",    "to": "create_access_token",  "label": "JWT"},
-                    {"from": "issue_token_pair",    "to": "hash_token",           "label": "hash refresh"},
+                    {
+                        "from": "issue_token_pair", "to": "hash_token", "label": "hash refresh",
+                        "example_before": "rt_8f3a1c9e2b4d5f60...",
+                        "example_after": "$2b$12$KIXQeC9z7Y8x1mN3pQrS5e",
+                    },
                     {"from": "issue_token_pair",    "to": "db",                   "label": "INSERT refresh_token"},
                     {"from": "auth_router",         "to": "client",               "label": "{ access_token, refresh_token }"},
                     {"from": "client",              "to": "auth_router",          "label": "POST /auth/refresh"},
@@ -211,7 +215,11 @@ EXAMPLES = {
                     {"from": "product_router", "to": "update_product", "label": "PATCH product"},
                     {"from": "update_product", "to": "db_session",     "label": "db.commit()  ← committed"},
                     {"from": "product_router", "to": "get_product",    "label": "concurrent GET (cache miss)"},
-                    {"from": "get_product",    "to": "db_session",     "label": "load from DB → stale repopulates cache"},
+                    {
+                        "from": "get_product", "to": "db_session", "label": "load from DB → stale repopulates cache",
+                        "example": '{"id": 42, "name": "Widget", "price": 9.99}  // old price, written back to cache',
+                        "example_lang": "json",
+                    },
                     {"from": "update_product", "to": "cache_delete",   "label": "cache.delete()  ← too late"},
                 ]
             },
@@ -276,7 +284,11 @@ EXAMPLES = {
                 "id": "place-order",
                 "label": "Place Order (happy path)",
                 "steps": [
-                    {"from": "client",    "to": "gateway",   "label": "POST /orders HTTPS"},
+                    {
+                        "from": "client", "to": "gateway", "label": "POST /orders HTTPS",
+                        "example": '{"items": [{"sku": "WIDGET-1", "qty": 2}], "shipping_address_id": "addr_88f3"}',
+                        "example_lang": "json",
+                    },
                     {"from": "gateway",   "to": "orders",    "label": "create order REST"},
                     {"from": "orders",    "to": "payments",  "label": "charge card gRPC"},
                     {"from": "payments",  "to": "paydb",     "label": "record payment SQL"},
@@ -293,7 +305,11 @@ EXAMPLES = {
                 "steps": [
                     {"from": "client",  "to": "gateway", "label": "POST /auth/login HTTPS"},
                     {"from": "gateway", "to": "users",   "label": "verify credentials REST"},
-                    {"from": "users",   "to": "userdb",  "label": "lookup user SQL"},
+                    {
+                        "from": "users", "to": "userdb", "label": "lookup user SQL",
+                        "example": "SELECT id, password_hash FROM users WHERE email = $1",
+                        "example_lang": "sql",
+                    },
                     {"from": "users",   "to": "gateway", "label": "JWT + refresh token"},
                     {"from": "gateway", "to": "client",  "label": "200 OK + tokens"},
                 ]

@@ -23,9 +23,14 @@ codebase explainer, or system visualization of any kind.
   "nodes": [{"id": "api", "label": "API", "kind": "service", "tech": "Go"}],
   "edges": [{"from": "ui", "to": "api", "kind": "calls", "label": "REST"}],
   "groups": [{"id": "backend", "label": "Backend", "kind": "layer", "members": ["api"]}],
-  "sequences": [{"id": "login", "label": "Login", "steps": [{"from": "ui", "to": "api", "label": "POST /login"}]}]
+  "sequences": [{"id": "login", "label": "Login", "steps": [
+    {"from": "ui", "to": "api", "label": "POST /login"},
+    {"from": "api", "to": "db", "label": "lookup user", "example": "SELECT * FROM users WHERE email = ?", "example_lang": "sql"}
+  ]}]
 }
 ```
+
+Steps can optionally carry `example` (a single snippet — request body, SQL, event payload) or `example_before`/`example_after` (either or both, rendered as a before/after diff) plus an optional `example_lang` hint — shown in a click-to-reveal panel. Omit entirely when a step doesn't need one.
 
 **Node kinds:** `service` `module` `class` `db` `queue` `external` `package` `file` `function`  
 **Edge kinds:** `calls` `imports` `depends` `emits` `subscribes` `reads` `writes` `deploys` `owns`  

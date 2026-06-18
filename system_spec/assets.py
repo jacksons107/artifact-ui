@@ -88,6 +88,9 @@ _CSS = """
                padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
                appearance: none; -webkit-appearance: none; }
 .sys-seq-panel { background: var(--white); border: var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+.sys-seq-panel-flat { background: none; border: none; padding: 0; }
+.sys-seq-step:hover .sys-seq-line { filter: brightness(0.85); }
+.sys-seq-step.active .sys-seq-line { stroke-width: 2.5px !important; }
 
 /* ── Code detail view ──────────────────────────── */
 .sys-cd-wrap { display: flex; flex-direction: column; gap: 14px; }
@@ -189,6 +192,35 @@ function sysGoTo(linkEl) {
         _selectNode(targetNode);
         targetNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+}
+
+/* ── Sequence step example panels ──────────────── */
+var _activeStep = null;
+function sysSeqStepClick(el) {
+    var targetId = el.getAttribute('data-target');
+    var panel = document.getElementById(targetId);
+    var wrap = el.closest('.sys-wrap');
+    var hint = wrap ? wrap.querySelector('.sys-hint') : null;
+
+    if (_activeStep === el) {
+        el.classList.remove('active');
+        _activeStep = null;
+        if (panel) panel.style.display = 'none';
+        if (hint) hint.style.display = 'block';
+        return;
+    }
+
+    if (_activeStep) {
+        _activeStep.classList.remove('active');
+        var prevWrap = _activeStep.closest('.sys-wrap');
+        if (prevWrap) prevWrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+    }
+    if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+
+    el.classList.add('active');
+    _activeStep = el;
+    if (hint) hint.style.display = 'none';
+    if (panel) panel.style.display = 'block';
 }
 
 /* ── Architecture kind + status filters ─────────── */

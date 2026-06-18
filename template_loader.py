@@ -76,7 +76,20 @@ def build_tool_description() -> str:
         '      "label": "Login Flow",\n'
         '      "steps": [\n'
         '        {"from": "client", "to": "api", "label": "POST /login"},\n'
-        '        {"from": "api", "to": "db", "label": "lookup user"}\n'
+        '        {\n'
+        '          "from": "api", "to": "db", "label": "lookup user",\n'
+        '          // optional — attach a concrete example to a step (request body,\n'
+        '          // SQL query, event payload, etc.) → click-to-reveal panel.\n'
+        '          "example": "SELECT * FROM users WHERE email = ?",\n'
+        '          "example_lang": "sql"  // syntax highlight hint, default "plaintext"\n'
+        '        },\n'
+        '        {\n'
+        '          "from": "api", "to": "api", "label": "hash password",\n'
+        '          // optional — for transform-style steps, show data before/after\n'
+        '          // (either side alone is fine too) → rendered as a side-by-side diff.\n'
+        '          "example_before": "hunter2",\n'
+        '          "example_after": "$2b$12$KIXQ..."\n'
+        '        }\n'
         "      ]\n"
         "    }\n"
         "  ]\n"
@@ -101,6 +114,8 @@ def build_tool_description() -> str:
         "                   Filter bar lets users hide/show node kinds and change statuses.\n"
         "Layers tab         Horizontal swim-lanes (only if groups with kind='layer' exist).\n"
         "Sequences tab      Sequence diagrams with dropdown selector (only if sequences exist).\n"
+        "                   Steps with example/example_before/example_after get a click-to-\n"
+        "                   reveal panel (snippet or before/after diff) — optional, per step.\n"
         "Code Detail tab    Per-group function/class drill-down with a module dropdown\n"
         "                   (only if any group has a 'detail' block).\n"
         "Changes tab        Before/after diff view grouped by added/modified/deleted\n"

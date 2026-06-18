@@ -75,6 +75,7 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
         )
 
     # Steps
+    seq_id = seq.get("id", "")
     for i, step in enumerate(steps):
         src = step.get("from")
         dst = step.get("to")
@@ -85,6 +86,14 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
         ex    = col_cx[dst]
         y     = LIFELINE_TOP + (i + 0.5) * _SEQ_STEP_H
         label = step.get("label", "")
+        has_example = bool(step.get("example") or step.get("example_before") or step.get("example_after"))
+
+        if has_example:
+            target = f'step-panel-{_e(seq_id)}-{i}'
+            parts.append(
+                f'<g class="sys-seq-step" data-target="{target}" '
+                f'style="cursor:pointer" onclick="sysSeqStepClick(this)">'
+            )
 
         if src == dst:
             # Self-loop: small arc to the right
@@ -93,7 +102,7 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
             parts.append(
                 f'<path d="M{sx:.1f},{y-10:.1f} Q{lx:.1f},{y-10:.1f} {lx:.1f},{y:.1f} '
                 f'Q{lx:.1f},{y+10:.1f} {sx:.1f},{y+10:.1f}" '
-                f'fill="none" stroke="#D97757" stroke-width="1.5"/>'
+                f'fill="none" stroke="#D97757" stroke-width="1.5" class="sys-seq-line"/>'
             )
             if label:
                 parts.append(
@@ -101,6 +110,11 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
                     f'font-family="ui-monospace,monospace" font-size="10" fill="#D97757">'
                     f'{_e(label)}</text>'
                 )
+            if has_example:
+                parts.append(
+                    f'<circle cx="{lx+6:.1f}" cy="{y-14:.1f}" r="3" fill="#D97757"/>'
+                )
+                parts.append("</g>")
             continue
 
         going_right = ex > sx
@@ -111,7 +125,7 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
         body_ex = ex - arrow_d if going_right else ex + arrow_d
         parts.append(
             f'<line x1="{sx:.1f}" y1="{y:.1f}" x2="{body_ex:.1f}" y2="{y:.1f}" '
-            f'stroke="#D97757" stroke-width="1.5"/>'
+            f'stroke="#D97757" stroke-width="1.5" class="sys-seq-line"/>'
         )
 
         # Explicit arrowhead polygon (avoids SVG marker rotation ambiguity)
@@ -136,8 +150,46 @@ def _render_seq_svg(seq: dict, node_by_id: dict) -> str:
             f'font-family="ui-monospace,monospace" font-size="9" fill="#D1CFC5">{i+1}</text>'
         )
 
+        if has_example:
+            # Marker dot indicating an example is available for this step
+            mx = (sx + ex) / 2
+            parts.append(f'<circle cx="{mx:.1f}" cy="{y - 14:.1f}" r="3" fill="#D97757"/>')
+            parts.append("</g>")
+
     parts.append("</svg>")
     return "\n".join(parts)
+
+
+def _render_step_panel(seq_id: str, i: int, step: dict) -> str:
+    lang = step.get("example_lang", "plaintext")
+    single   = step.get("example", "")
+    before   = step.get("example_before", "")
+    after    = step.get("example_after", "")
+    label    = step.get("label", "")
+
+    html  = f'<div class="sys-panel" id="step-panel-{_e(seq_id)}-{i}" style="display:none">'
+    html += '<div class="sys-ph">'
+    html += f'<span class="sys-plabel">Step {i + 1}{": " + _e(label) if label else ""}</span>'
+    html += '</div>'
+
+    if single:
+        html += f'<div class="sys-snippet"><pre><code class="language-{lang}">{_e(single)}</code></pre></div>'
+
+    if before and after:
+        html += '<div class="sys-chg-diff">'
+        html += '<div class="sys-chg-side"><div class="sys-chg-side-label" style="color:#B04A3F">Before</div>'
+        html += f'<pre class="sys-chg-pre"><code class="language-{lang}">{_e(before)}</code></pre>'
+        html += '</div>'
+        html += '<div class="sys-chg-side"><div class="sys-chg-side-label" style="color:#4A7C59">After</div>'
+        html += f'<pre class="sys-chg-pre"><code class="language-{lang}">{_e(after)}</code></pre>'
+        html += '</div></div>'
+    elif after:
+        html += f'<pre class="sys-chg-pre"><code class="language-{lang}">{_e(after)}</code></pre>'
+    elif before:
+        html += f'<pre class="sys-chg-pre"><code class="language-{lang}">{_e(before)}</code></pre>'
+
+    html += '</div>'
+    return html
 
 
 def render_sequence_html(spec: dict) -> str:
@@ -161,7 +213,29 @@ def render_sequence_html(spec: dict) -> str:
     for i, seq in enumerate(sequences):
         display = '' if i == 0 else 'style="display:none"'
         svg = _render_seq_svg(seq, node_by_id)
-        html += f'<div id="seqp-{_e(seq["id"])}" class="sys-seq-panel" {display}>{svg}</div>'
+        steps = seq.get("steps", [])
+        example_steps = [
+            (j, step) for j, step in enumerate(steps)
+            if step.get("example") or step.get("example_before") or step.get("example_after")
+        ]
+
+        if example_steps:
+            panels = "\n".join(_render_step_panel(seq["id"], j, step) for j, step in example_steps)
+            inner = (
+                '<div class="sys-wrap">'
+                f'<div class="sys-main"><div class="sys-diagram">{svg}</div></div>'
+                '<div class="sys-sidebar">'
+                '<div class="sys-hint">Click a highlighted step<br>to see an example</div>'
+                f'{panels}'
+                '</div>'
+                '</div>'
+            )
+            panel_class = "sys-seq-panel sys-seq-panel-flat"
+        else:
+            inner = svg
+            panel_class = "sys-seq-panel"
+
+        html += f'<div id="seqp-{_e(seq["id"])}" class="{panel_class}" {display}>{inner}</div>'
     html += '</div>'
 
     html += '</div>'
