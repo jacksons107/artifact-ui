@@ -3,7 +3,9 @@ import atexit
 import json
 import os
 import socket
+import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,45 @@ import system_spec_examples
 BUILTIN_RENDERERS = {
     "system_spec": system_spec_module.render_system_spec,
 }
+
+# ── Hot reload ────────────────────────────────────────────────────────────────
+# This process is long-running (spawned once per Claude Code session), so edits
+# to these modules wouldn't otherwise take effect until a manual restart. Check
+# source mtimes on every tool call and re-import fresh if anything changed.
+
+_HOT_RELOAD_ROOTS = ["template_loader.py", "system_spec_examples.py", "design_system.py", "system_spec"]
+
+
+def _watched_source_mtime() -> float:
+    base = Path(__file__).parent
+    paths: list[Path] = []
+    for root in _HOT_RELOAD_ROOTS:
+        p = base / root
+        if p.is_dir():
+            paths.extend(p.rglob("*.py"))
+        elif p.exists():
+            paths.append(p)
+    return max((p.stat().st_mtime for p in paths), default=0.0)
+
+
+_last_reload_mtime = _watched_source_mtime()
+
+
+def _maybe_hot_reload() -> None:
+    global _last_reload_mtime, system_spec_module, template_loader, system_spec_examples
+    current = _watched_source_mtime()
+    if current <= _last_reload_mtime:
+        return
+    _last_reload_mtime = current
+    for mod_name in list(sys.modules):
+        if mod_name == "system_spec" or mod_name.startswith("system_spec.") or mod_name in (
+            "template_loader", "system_spec_examples", "design_system",
+        ):
+            del sys.modules[mod_name]
+    import system_spec as system_spec_module
+    import template_loader
+    import system_spec_examples
+    BUILTIN_RENDERERS["system_spec"] = system_spec_module.render_system_spec
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +169,7 @@ def spec_path_for(html_path: Path) -> Path:
 
 @mcp_server.list_tools()
 async def list_tools() -> list[types.Tool]:
+    _maybe_hot_reload()
     example_names = list(system_spec_examples.EXAMPLES.keys())
     return [
         types.Tool(
@@ -237,6 +279,7 @@ async def list_tools() -> list[types.Tool]:
 
 @mcp_server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    _maybe_hot_reload()
     if name == "get_example":
         example_name = arguments.get("name", "")
         example = system_spec_examples.EXAMPLES.get(example_name)
@@ -326,7 +369,27 @@ def port_in_use(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
+def _free_stale_port(port: int) -> None:
+    """Kill any leftover process (e.g. an orphaned session) still bound to
+    `port`, so a fresh process never has to be preceded by a manual restart.sh."""
+    try:
+        result = subprocess.run(["lsof", "-ti", f":{port}"], capture_output=True, text=True, timeout=3)
+    except Exception:
+        return
+    pids = [p for p in result.stdout.split() if p.isdigit() and int(p) != os.getpid()]
+    if not pids:
+        return
+    for pid in pids:
+        try:
+            os.kill(int(pid), 15)
+        except ProcessLookupError:
+            pass
+    time.sleep(0.3)
+
+
 async def main() -> None:
+    _free_stale_port(PORT)
+
     pid_file = ARTIFACT_DIR / "server.pid"
     pid_file.write_text(str(os.getpid()))
     atexit.register(lambda: pid_file.unlink(missing_ok=True))
