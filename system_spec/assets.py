@@ -594,9 +594,10 @@ function _applyArchFilter() {
     var hasEKindFilter  = document.querySelectorAll('.sys-fc[data-aek]').length > 0;
     var hasGroupFilter  = document.querySelectorAll('.sys-fc[data-ag]').length > 0;
 
-    // Groups explicitly toggled off (not just "none active" -> show-all fallback)
+    // Groups not currently active — if none are active, every group counts as inactive
+    // (so deselecting all group toggles fades all groups, rather than showing everything).
     var inactiveGroups = new Set();
-    if (hasGroupFilter && agroups.size > 0) {
+    if (hasGroupFilter) {
         document.querySelectorAll('.sys-fc[data-ag]').forEach(function(b) {
             var gid = b.getAttribute('data-ag');
             if (!agroups.has(gid)) inactiveGroups.add(gid);
@@ -607,24 +608,28 @@ function _applyArchFilter() {
         return groupsAttr.split(' ').some(function(gid) { return gid && inactiveGroups.has(gid); });
     }
 
+    var hiddenNodes = new Set();
     document.querySelectorAll('.sys-node').forEach(function(n) {
         var k = n.getAttribute('data-kind');
         var s = n.getAttribute('data-status') || '';
-        var kOk = !hasKindFilter   || kinds.size === 0    || kinds.has(k);
-        var sOk = !hasStatusFilter || statuses.size === 0 || !s || statuses.has(s);
+        var kOk = !hasKindFilter   || (kinds.size > 0 && kinds.has(k));
+        var sOk = !hasStatusFilter || !s || (statuses.size > 0 && statuses.has(s));
         var groupFaded = _inInactiveGroup(n.getAttribute('data-groups'));
-        n.classList.toggle('filtered-out', !(kOk && sOk) || groupFaded);
+        var hidden = !(kOk && sOk) || groupFaded;
+        n.classList.toggle('filtered-out', hidden);
+        if (hidden) hiddenNodes.add(n.getAttribute('data-id'));
     });
     document.querySelectorAll('.sys-edge').forEach(function(e) {
         var k = e.getAttribute('data-kind');
-        var eOk = !hasEKindFilter || ekinds.size === 0 || ekinds.has(k);
+        var eOk = !hasEKindFilter || (ekinds.size > 0 && ekinds.has(k));
         var groupFaded = _inInactiveGroup(e.getAttribute('data-src-groups')) ||
                           _inInactiveGroup(e.getAttribute('data-dst-groups'));
-        e.classList.toggle('filtered-out', !eOk || groupFaded);
+        var endpointHidden = hiddenNodes.has(e.getAttribute('data-from')) || hiddenNodes.has(e.getAttribute('data-to'));
+        e.classList.toggle('filtered-out', !eOk || groupFaded || endpointHidden);
     });
     document.querySelectorAll('.sys-group').forEach(function(g) {
         var gid = g.getAttribute('data-gid');
-        var gOk = !hasGroupFilter || agroups.size === 0 || agroups.has(gid);
+        var gOk = !hasGroupFilter || (agroups.size > 0 && agroups.has(gid));
         g.classList.toggle('filtered-out', !gOk);
     });
 }
