@@ -43,6 +43,7 @@ def _watched_source_mtime() -> float:
         p = base / root
         if p.is_dir():
             paths.extend(p.rglob("*.py"))
+            paths.extend(p.rglob("*.js"))
         elif p.exists():
             paths.append(p)
     return max((p.stat().st_mtime for p in paths), default=0.0)

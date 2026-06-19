@@ -169,6 +169,10 @@ _CSS = """
 /* ── Architecture animate control row ─────────── */
 .sys-arch-animate { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 
+/* ── Expand-in-place / collapse glyphs (drawn by arch_engine.js) ── */
+.sys-expand-btn { opacity: 0.55; transition: opacity 0.1s; }
+.sys-expand-btn:hover { opacity: 1; }
+
 /* ── Appears-in-sequences (node detail panel) ─── */
 .sys-seq-refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 

@@ -1,6 +1,5 @@
 from .styles import _e
 from .validation import parse_spec
-from .layout import layout_graph
 from .arch_block import render_diagram_block
 
 # ── Code detail tab ───────────────────────────────────────────────────────────
@@ -30,9 +29,8 @@ def render_code_detail_html(spec: dict) -> str:
             "groups":     detail.get("groups", []),
             "sequences":  detail.get("sequences", []),
         })
-        positions = layout_graph(sub["nodes"], sub["edges"], sub["groups"])
         prefix = f'cd-{g["id"]}-'
-        block  = render_diagram_block(sub, positions, id_prefix=prefix)
+        block  = render_diagram_block(sub, id_prefix=prefix)
 
         display = '' if i == 0 else ' style="display:none"'
         html += f'<div id="cdp-{_e(g["id"])}" class="sys-cd-panel"{display}>{block}</div>'

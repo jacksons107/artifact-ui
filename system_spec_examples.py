@@ -460,7 +460,11 @@ EXAMPLES = {
                         {"from": "verify_token", "to": "is_revoked", "kind": "calls"},
                         {"from": "verify_token", "to": "issue_token", "kind": "depends", "label": "shares SECRET"},
                         {"from": "revoke_token", "to": "is_revoked", "kind": "depends", "label": "writes set read by"}
-                    ]
+                    ],
+                    "boundary": {
+                        "gateway": "verify_token",
+                        "notes": "verify_token"
+                    }
                 }
             }
         ]

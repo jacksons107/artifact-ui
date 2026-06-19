@@ -2,11 +2,10 @@ from design_system import page_wrapper
 
 from .styles import _e
 from .validation import parse_spec
-from .layout import layout_graph
 from .matrix import render_matrix_html, render_component_list_html
 from .layer_diagram import render_layer_svg
 from .sequence_diagram import render_sequence_html
-from .arch_block import render_diagram_block
+from .arch_block import render_diagram_block, _ARCH_ENGINE_JS
 from .code_detail import render_code_detail_html
 from .changes import render_changes_html
 from .assets import _CSS, _JS
@@ -14,9 +13,8 @@ from .assets import _CSS, _JS
 
 def render_system_spec(data: dict) -> str:
     spec       = parse_spec(data)
-    positions  = layout_graph(spec["nodes"], spec["edges"], spec["groups"])
 
-    arch_block = render_diagram_block(spec, positions)
+    arch_block = render_diagram_block(spec)
     comp_list  = render_component_list_html(spec)
     matrix     = render_matrix_html(spec)
     has_seqs   = bool(spec.get("sequences"))
@@ -106,6 +104,7 @@ def render_system_spec(data: dict) -> str:
 {changes_view}
 {matrix_view}
 {comp_view}
+<script>{_ARCH_ENGINE_JS}</script>
 <script>{_JS}</script>
 """
 

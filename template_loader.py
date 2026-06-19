@@ -61,17 +61,22 @@ def build_tool_description() -> str:
         '      "kind": "layer",       // layer | package | team | domain | deployment\n'
         '      "members": ["ui", "client"],\n'
         '      // optional — nested spec for this group, shown in a "Code Detail" tab\n'
-        '      // with a per-group dropdown. It is the SAME diagram type as the\n'
-        '      // top-level Architecture view (filter bar, sequence animation, detail\n'
-        '      // panels) — just scoped to this group\'s own nodes. Same nodes/edges/\n'
-        '      // groups/sequences shape as the top level, own id namespace, typically\n'
-        '      // code-level kinds/fields.\n'
+        '      // with a per-group dropdown, AND expandable in place on the node itself\n'
+        '      // (click the ⤢ on an expandable node in the Architecture diagram to swap\n'
+        '      // it for this subgraph, click ✕ on the resulting box to collapse back).\n'
+        '      // Same nodes/edges/groups/sequences shape as the top level, own id\n'
+        '      // namespace, typically code-level kinds/fields.\n'
         '      "detail": {\n'
         '        "nodes": [{"id": "handler", "label": "handle_request()", "kind": "function",\n'
         '                   "signature": "def handle_request(req) -> Response", "code_snippet": "..."}],\n'
         '        "edges": [{"from": "handler", "to": "handler", "kind": "calls"}],\n'
         '        "groups": [],     // optional — same shape as top-level groups\n'
-        '        "sequences": []   // optional — same shape as top-level sequences\n'
+        '        "sequences": [],  // optional — same shape as top-level sequences\n'
+        '        // REQUIRED if any top-level edge touches this group\'s members: maps every\n'
+        '        // such external neighbor\'s node id to the specific detail node id that\n'
+        '        // should receive its arrow once expanded. No default/fallback — pick the\n'
+        '        // exact node, e.g. the one a label like "verify token" actually calls.\n'
+        '        "boundary": {"ui": "handler"}\n'
         "      }\n"
         "    }\n"
         "  ],\n"
@@ -119,7 +124,10 @@ def build_tool_description() -> str:
         "                   sequences touch this node — click one to play it, see below).\n"
         "                   Filter bar lets users hide/show node kinds and change statuses.\n"
         "                   If sequences exist, an 'Animate' control plays any sequence as\n"
-        "                   a traveling-pulse trail directly on top of the diagram.\n"
+        "                   a traveling-pulse trail directly on top of the diagram. Nodes\n"
+        "                   whose group has a 'detail' block show a ⤢ to expand in place —\n"
+        "                   the node is swapped for its detail subgraph (boxed, with a ✕ to\n"
+        "                   collapse), external edges rerouted per detail.boundary.\n"
         "Layers tab         Horizontal swim-lanes (only if groups with kind='layer' exist).\n"
         "Sequences tab      Sequence diagrams with dropdown selector (only if sequences exist).\n"
         "                   Steps with example/example_before/example_after get a click-to-\n"
