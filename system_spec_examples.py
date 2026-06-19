@@ -276,7 +276,7 @@ EXAMPLES = {
         "groups": [
             {"id": "public",      "label": "Public Zone",    "kind": "layer",  "members": ["client", "mobile"]},
             {"id": "edge",        "label": "Edge Layer",     "kind": "layer",  "members": ["gateway"]},
-            {"id": "fulfillment", "label": "Fulfillment",    "kind": "domain", "members": ["orders", "inventory", "orderdb", "invdb"]},
+            {"id": "fulfillment", "label": "Fulfillment",    "kind": "domain", "members": ["orders", "inventory"]},
             {"id": "data",        "label": "Data Layer",     "kind": "layer",  "members": ["orderdb", "invdb", "paydb", "userdb"]},
         ],
         "sequences": [
@@ -427,45 +427,65 @@ EXAMPLES = {
 
     "mixed_levels": {
         "title": "Notes API — System + Code Detail",
-        "description": "A small system view (gateway, auth service, notes service, db) where the Auth Service group has a 'Code Detail' drill-down into its actual functions, including a recent fix to token verification. Demonstrates combining system-level and code-level content in one artifact.",
+        "description": "A small system view (gateway, notes service, db) where the Auth Service is modeled as a collapsible group — collapsed it's one box; expanded it reveals the real functions inside, including a recent fix to token verification. Demonstrates combining system-level and code-level content in one artifact.",
         "nodes": [
             {"id": "client",  "label": "Web Client",   "kind": "external", "description": "Browser SPA"},
             {"id": "gateway", "label": "API Gateway",  "kind": "service",  "description": "Routes requests, enforces auth on protected routes.", "tech": "nginx"},
-            {"id": "auth",    "label": "Auth Service", "kind": "service",  "description": "Issues and verifies session tokens.", "tech": "Python", "owner": "platform-team"},
             {"id": "notes",   "label": "Notes Service","kind": "service",  "description": "CRUD for user notes. Calls Auth Service to verify tokens.", "tech": "Python", "owner": "notes-team"},
-            {"id": "db",      "label": "Notes DB",     "kind": "db",       "tech": "PostgreSQL"}
+            {"id": "db",      "label": "Notes DB",     "kind": "db",       "tech": "PostgreSQL"},
+            {"id": "verify_token", "label": "verify_token()", "kind": "function", "status": "modified", "tech": "Python", "file_path": "auth/tokens.py", "line_range": [18, 34], "description": "Verifies a session token's signature and expiry. Fixed to also check the token's revocation list, closing a window where revoked tokens were still accepted.", "signature": "def verify_token(token: str) -> User", "previous_code_snippet": "def verify_token(token: str) -> User:\n    payload = jwt.decode(token, SECRET, algorithms=[\"HS256\"])\n    if payload[\"exp\"] < time.time():\n        raise TokenExpired()\n    return User.objects.get(id=payload[\"sub\"])", "code_snippet": "def verify_token(token: str) -> User:\n    payload = jwt.decode(token, SECRET, algorithms=[\"HS256\"])\n    if payload[\"exp\"] < time.time():\n        raise TokenExpired()\n    if is_revoked(payload[\"jti\"]):\n        raise TokenRevoked()\n    return User.objects.get(id=payload[\"sub\"])"},
+            {"id": "is_revoked", "label": "is_revoked()", "kind": "function", "status": "added", "tech": "Python", "file_path": "auth/tokens.py", "line_range": [36, 39], "description": "New helper checking the Redis revocation set for a token's JTI.", "signature": "def is_revoked(jti: str) -> bool", "code_snippet": "def is_revoked(jti: str) -> bool:\n    return redis.sismember(\"revoked_tokens\", jti)"},
+            {"id": "issue_token", "label": "issue_token()", "kind": "function", "status": "stable", "tech": "Python", "file_path": "auth/tokens.py", "line_range": [1, 16], "description": "Issues a signed session token for a user.", "signature": "def issue_token(user: User) -> str", "code_snippet": "def issue_token(user: User) -> str:\n    payload = {\"sub\": user.id, \"jti\": uuid4().hex, \"exp\": time.time() + 3600}\n    return jwt.encode(payload, SECRET, algorithm=\"HS256\")"},
+            {"id": "revoke_token", "label": "revoke_token()", "kind": "function", "status": "added", "tech": "Python", "file_path": "auth/tokens.py", "line_range": [41, 43], "description": "New endpoint handler — adds a token's JTI to the revocation set on logout.", "signature": "def revoke_token(jti: str) -> None", "code_snippet": "def revoke_token(jti: str) -> None:\n    redis.sadd(\"revoked_tokens\", jti)"}
         ],
         "edges": [
-            {"from": "client",  "to": "gateway", "kind": "calls", "label": "HTTPS"},
-            {"from": "gateway", "to": "auth",    "kind": "calls", "label": "verify token"},
-            {"from": "gateway", "to": "notes",   "kind": "calls", "label": "REST"},
-            {"from": "notes",   "to": "auth",    "kind": "calls", "label": "verify token"},
-            {"from": "notes",   "to": "db",      "kind": "reads", "label": "SQL"},
-            {"from": "notes",   "to": "db",      "kind": "writes","label": "SQL"}
+            {"from": "client",  "to": "gateway",       "kind": "calls", "label": "HTTPS"},
+            {"from": "gateway", "to": "verify_token",  "kind": "calls", "label": "verify token"},
+            {"from": "gateway", "to": "notes",         "kind": "calls", "label": "REST"},
+            {"from": "notes",   "to": "verify_token",  "kind": "calls", "label": "verify token"},
+            {"from": "notes",   "to": "db",            "kind": "reads", "label": "SQL"},
+            {"from": "notes",   "to": "db",            "kind": "writes","label": "SQL"},
+            {"from": "verify_token", "to": "is_revoked",  "kind": "calls"},
+            {"from": "verify_token", "to": "issue_token", "kind": "depends", "label": "shares SECRET"},
+            {"from": "revoke_token", "to": "is_revoked",  "kind": "depends", "label": "writes set read by"}
         ],
         "groups": [
             {
                 "id": "auth_group",
                 "label": "Auth Service",
                 "kind": "package",
-                "members": ["auth"],
-                "detail": {
-                    "nodes": [
-                        {"id": "verify_token", "label": "verify_token()", "kind": "function", "status": "modified", "tech": "Python", "file_path": "auth/tokens.py", "line_range": [18, 34], "description": "Verifies a session token's signature and expiry. Fixed to also check the token's revocation list, closing a window where revoked tokens were still accepted.", "signature": "def verify_token(token: str) -> User", "previous_code_snippet": "def verify_token(token: str) -> User:\n    payload = jwt.decode(token, SECRET, algorithms=[\"HS256\"])\n    if payload[\"exp\"] < time.time():\n        raise TokenExpired()\n    return User.objects.get(id=payload[\"sub\"])", "code_snippet": "def verify_token(token: str) -> User:\n    payload = jwt.decode(token, SECRET, algorithms=[\"HS256\"])\n    if payload[\"exp\"] < time.time():\n        raise TokenExpired()\n    if is_revoked(payload[\"jti\"]):\n        raise TokenRevoked()\n    return User.objects.get(id=payload[\"sub\"])"},
-                        {"id": "is_revoked", "label": "is_revoked()", "kind": "function", "status": "added", "tech": "Python", "file_path": "auth/tokens.py", "line_range": [36, 39], "description": "New helper checking the Redis revocation set for a token's JTI.", "signature": "def is_revoked(jti: str) -> bool", "code_snippet": "def is_revoked(jti: str) -> bool:\n    return redis.sismember(\"revoked_tokens\", jti)"},
-                        {"id": "issue_token", "label": "issue_token()", "kind": "function", "status": "stable", "tech": "Python", "file_path": "auth/tokens.py", "line_range": [1, 16], "description": "Issues a signed session token for a user.", "signature": "def issue_token(user: User) -> str", "code_snippet": "def issue_token(user: User) -> str:\n    payload = {\"sub\": user.id, \"jti\": uuid4().hex, \"exp\": time.time() + 3600}\n    return jwt.encode(payload, SECRET, algorithm=\"HS256\")"},
-                        {"id": "revoke_token", "label": "revoke_token()", "kind": "function", "status": "added", "tech": "Python", "file_path": "auth/tokens.py", "line_range": [41, 43], "description": "New endpoint handler — adds a token's JTI to the revocation set on logout.", "signature": "def revoke_token(jti: str) -> None", "code_snippet": "def revoke_token(jti: str) -> None:\n    redis.sadd(\"revoked_tokens\", jti)"}
-                    ],
-                    "edges": [
-                        {"from": "verify_token", "to": "is_revoked", "kind": "calls"},
-                        {"from": "verify_token", "to": "issue_token", "kind": "depends", "label": "shares SECRET"},
-                        {"from": "revoke_token", "to": "is_revoked", "kind": "depends", "label": "writes set read by"}
-                    ],
-                    "boundary": {
-                        "gateway": "verify_token",
-                        "notes": "verify_token"
-                    }
-                }
+                "members": ["verify_token", "is_revoked", "issue_token", "revoke_token"]
+            }
+        ]
+    },
+
+    "sys_replicated_cells": {
+        "title": "Replicated Worker Cells — clone_of demo",
+        "description": "A router fans requests out to one of two structurally-identical worker cells. Cell A is modeled once; Cell B is declared with clone_of so its worker/db pair and the router edge into it don't have to be hand-duplicated. Both cells render collapsed by default — expand either to see its real internals.",
+        "nodes": [
+            {"id": "client", "label": "Client",        "kind": "external", "description": "Issues work requests."},
+            {"id": "router", "label": "Global Router", "kind": "service",  "description": "Routes each request to a healthy cell.", "tech": "Go"},
+            {"id": "cell_a_worker", "label": "Worker",  "kind": "service", "tech": "Python", "description": "Processes the request."},
+            {"id": "cell_a_db",     "label": "Cell DB", "kind": "db",      "tech": "PostgreSQL"}
+        ],
+        "edges": [
+            {"from": "client", "to": "router",         "kind": "calls", "label": "HTTPS"},
+            {"from": "router", "to": "cell_a_worker",  "kind": "calls", "label": "route"},
+            {"from": "cell_a_worker", "to": "cell_a_db","kind": "writes","label": "SQL"}
+        ],
+        "groups": [
+            {"id": "cell_a", "label": "Cell A", "kind": "deployment", "members": ["cell_a_worker", "cell_a_db"]},
+            {"id": "cell_b", "label": "Cell B", "kind": "deployment", "clone_of": "cell_a"}
+        ],
+        "sequences": [
+            {
+                "id": "route-to-a",
+                "label": "Route to Cell A",
+                "steps": [
+                    {"from": "client", "to": "router",        "label": "POST /work"},
+                    {"from": "router", "to": "cell_a_worker", "label": "route → Cell A"},
+                    {"from": "cell_a_worker", "to": "cell_a_db", "label": "persist result"}
+                ]
             }
         ]
     },

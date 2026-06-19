@@ -19,19 +19,15 @@ def render_system_spec(data: dict) -> str:
     matrix     = render_matrix_html(spec)
     has_seqs   = bool(spec.get("sequences"))
 
-    all_nodes = spec["nodes"] + [
-        n for g in spec["groups"] for n in g.get("detail", {}).get("nodes", [])
-    ]
-
     has_layers  = any(g.get("kind") == "layer" for g in spec["groups"])
-    has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in all_nodes)
-    has_snippets = any(n.get("code_snippet") for n in all_nodes) or has_changes
+    has_changes = any(n.get("status") in ("added", "modified", "deleted") for n in spec["nodes"])
+    has_snippets = any(n.get("code_snippet") for n in spec["nodes"]) or has_changes
 
     layer_svg    = render_layer_svg(spec) if has_layers else ""
     seq_html     = render_sequence_html(spec) if has_seqs else ""
     code_detail_html = render_code_detail_html(spec)
     has_code_detail  = bool(code_detail_html)
-    changes_html = render_changes_html(all_nodes) if has_changes else ""
+    changes_html = render_changes_html(spec["nodes"]) if has_changes else ""
 
     desc_html = f'<p class="sys-desc">{_e(spec["description"])}</p>' if spec["description"] else ""
 

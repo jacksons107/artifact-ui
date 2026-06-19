@@ -1,4 +1,14 @@
 # ── Validation ────────────────────────────────────────────────────────────────
+#
+# Groups are collapsible nodes: `groups[].members` may list real node ids
+# and/or other group ids (nesting), every id may have at most one parent
+# group, and there is no separate `detail` block — a group's own members ARE
+# what it expands to reveal. `clone_of` lets one group's entire member
+# subtree (nodes, nested groups, and the edges among/touching them) be
+# reused under a new id-prefix instead of hand-duplicated.
+
+import copy
+
 
 def _validate_nodes_edges(nodes: list, edges: list, context: str) -> set:
     node_ids = set()
@@ -27,16 +37,52 @@ def _validate_nodes_edges(nodes: list, edges: list, context: str) -> set:
 
 
 def _validate_groups(groups: list, node_ids: set, context: str) -> None:
+    """Validates group shape, that every member is a known node or group id,
+    and that every node/group has at most one parent group (required for
+    collapse/expand to be unambiguous)."""
+    group_ids = set()
     for i, group in enumerate(groups):
         if "id" not in group:
             raise ValueError(f"{context}groups[{i}] is missing required field 'id'.")
         if "label" not in group:
             raise ValueError(f"{context}groups[{i}] (id={group['id']!r}) is missing required field 'label'.")
+        if group["id"] in group_ids:
+            raise ValueError(f"{context}groups[{i}]: duplicate group id {group['id']!r}.")
+        group_ids.add(group["id"])
+
+    parent_of: dict = {}
+    for i, group in enumerate(groups):
+        gid = group["id"]
         for member in group.get("members", []):
-            if member not in node_ids:
+            if member not in node_ids and member not in group_ids:
                 raise ValueError(
-                    f"{context}groups[{i}] (id={group['id']!r}): member {member!r} is not a known node id."
+                    f"{context}groups[{i}] (id={gid!r}): member {member!r} is not a known node id or group id."
                 )
+            if member == gid:
+                raise ValueError(f"{context}groups[{i}] (id={gid!r}): a group cannot be a member of itself.")
+            if member in parent_of and parent_of[member] != gid:
+                raise ValueError(
+                    f"{context}groups[{i}] (id={gid!r}): member {member!r} is already a member of group "
+                    f"{parent_of[member]!r} — a node or group may belong to at most one parent group."
+                )
+            parent_of[member] = gid
+
+    # Cycle check: a group can't (transitively) contain itself.
+    children = {g["id"]: list(g.get("members", [])) for g in groups}
+    for start in group_ids:
+        stack, visiting = [start], set()
+        while stack:
+            cur = stack.pop()
+            if cur == start and cur in visiting:
+                raise ValueError(f"{context}groups: cycle detected — group {start!r} transitively contains itself.")
+            if cur in visiting:
+                continue
+            visiting.add(cur)
+            for m in children.get(cur, []):
+                if m in group_ids:
+                    if m == start:
+                        raise ValueError(f"{context}groups: cycle detected — group {start!r} transitively contains itself.")
+                    stack.append(m)
 
 
 def _validate_sequences(seqs: list, node_ids: set, context: str) -> None:
@@ -54,38 +100,99 @@ def _validate_sequences(seqs: list, node_ids: set, context: str) -> None:
                     )
 
 
-def _validate_boundary(group: dict, edges: list, detail_node_ids: set, ctx: str) -> None:
-    """Every external node with a top-level edge touching this group's members must have
-    an explicit detail.boundary[external_id] -> internal_node_id mapping. No fallback —
-    expand-in-place needs to know exactly which inner node receives each outside edge."""
-    members = set(group.get("members", []))
-    neighbors = set()
-    for edge in edges:
-        src, dst = edge.get("from"), edge.get("to")
-        if src in members and dst not in members:
-            neighbors.add(dst)
-        if dst in members and src not in members:
-            neighbors.add(src)
-    if not neighbors:
-        return
+# ── clone_of resolution ────────────────────────────────────────────────────
 
-    boundary = group.get("detail", {}).get("boundary", {})
-    if not isinstance(boundary, dict):
-        raise ValueError(f"{ctx}boundary must be an object mapping external node ids to this detail's own node ids.")
+def _subtree_ids(group_id: str, groups_by_id: dict) -> tuple:
+    """BFS over group membership starting at group_id. Returns
+    (group_ids_in_subtree_including_root, leaf_node_ids_in_subtree)."""
+    sub_groups, leaf_ids = {group_id}, set()
+    queue = [group_id]
+    while queue:
+        gid = queue.pop()
+        g = groups_by_id[gid]
+        for m in g.get("members", []):
+            if m in groups_by_id:
+                if m not in sub_groups:
+                    sub_groups.add(m)
+                    queue.append(m)
+            else:
+                leaf_ids.add(m)
+    return sub_groups, leaf_ids
 
-    missing = sorted(n for n in neighbors if n not in boundary)
-    if missing:
-        raise ValueError(
-            f"{ctx}boundary is missing a mapping for external neighbor(s) {missing!r}. "
-            f"Every node with a top-level edge touching this group's members must have "
-            f"boundary[{missing[0]!r}] = <id of the detail node that should receive that edge>."
-        )
 
-    for ext_id, internal_id in boundary.items():
-        if internal_id not in detail_node_ids:
+def _id_map_for_clone(source_id: str, new_id: str, ids: set) -> dict:
+    id_map = {}
+    prefix = source_id + "_"
+    for old_id in ids:
+        if old_id == source_id:
+            id_map[old_id] = new_id
+        elif old_id.startswith(prefix):
+            id_map[old_id] = new_id + "_" + old_id[len(prefix):]
+        else:
             raise ValueError(
-                f"{ctx}boundary[{ext_id!r}] = {internal_id!r} is not a known id among this detail's own nodes."
+                f"clone_of: id {old_id!r} inside group {source_id!r}'s subtree doesn't start with "
+                f"{prefix!r} — every node/group nested under a clonable group must be prefixed with the "
+                f"group's own id (e.g. {source_id}_worker) so clone_of can derive the cloned ids mechanically."
             )
+    return id_map
+
+
+def _resolve_clones(nodes: list, edges: list, groups: list) -> tuple:
+    groups_by_id = {g["id"]: g for g in groups if "id" in g}
+    clone_groups = [g for g in groups if g.get("clone_of")]
+    if not clone_groups:
+        return nodes, edges, groups
+
+    for g in clone_groups:
+        source_id = g["clone_of"]
+        if source_id not in groups_by_id:
+            raise ValueError(f"groups (id={g['id']!r}): clone_of references unknown group id {source_id!r}.")
+        if groups_by_id[source_id].get("clone_of"):
+            raise ValueError(
+                f"groups (id={g['id']!r}): clone_of source {source_id!r} is itself a clone — chained clone_of "
+                f"is not allowed, clone the original group instead."
+            )
+
+    node_by_id = {n["id"]: n for n in nodes}
+    new_nodes, new_edges, new_groups = [], [], []
+
+    for g in clone_groups:
+        source_id, new_id = g["clone_of"], g["id"]
+        sub_group_ids, leaf_ids = _subtree_ids(source_id, groups_by_id)
+        id_map = _id_map_for_clone(source_id, new_id, sub_group_ids | leaf_ids)
+
+        for nid in leaf_ids:
+            clone = copy.deepcopy(node_by_id[nid])
+            clone["id"] = id_map[nid]
+            new_nodes.append(clone)
+
+        for gid in sub_group_ids:
+            src_group = groups_by_id[gid]
+            clone = copy.deepcopy(src_group)
+            clone["id"] = id_map[gid]
+            clone["members"] = [id_map[m] for m in src_group.get("members", [])]
+            clone.pop("clone_of", None)
+            if gid == source_id:
+                # The clone's own label/kind (as authored on `g`) win; everything else is inherited.
+                clone["label"] = g.get("label", clone.get("label"))
+                if g.get("kind"):
+                    clone["kind"] = g["kind"]
+            new_groups.append(clone)
+
+        for e in edges:
+            from_in, to_in = e.get("from") in leaf_ids, e.get("to") in leaf_ids
+            if not from_in and not to_in:
+                continue
+            ce = copy.deepcopy(e)
+            if from_in:
+                ce["from"] = id_map[e["from"]]
+            if to_in:
+                ce["to"] = id_map[e["to"]]
+            new_edges.append(ce)
+
+    clone_ids = {g["id"] for g in clone_groups}
+    remaining_groups = [g for g in groups if g["id"] not in clone_ids]
+    return nodes + new_nodes, edges + new_edges, remaining_groups + new_groups
 
 
 def parse_spec(data: dict) -> dict:
@@ -98,21 +205,11 @@ def parse_spec(data: dict) -> dict:
     if not nodes:
         raise ValueError("system_spec requires at least one node in 'nodes'.")
 
+    nodes, edges, groups = _resolve_clones(nodes, edges, groups)
+
     node_ids = _validate_nodes_edges(nodes, edges, "")
     _validate_groups(groups, node_ids, "")
     _validate_sequences(seqs, node_ids, "")
-
-    for i, group in enumerate(groups):
-        detail = group.get("detail")
-        if not detail:
-            continue
-        ctx = f"groups[{i}] (id={group['id']!r}).detail."
-        detail_node_ids = _validate_nodes_edges(
-            detail.get("nodes", []), detail.get("edges", []), ctx
-        )
-        _validate_groups(detail.get("groups", []), detail_node_ids, ctx)
-        _validate_sequences(detail.get("sequences", []), detail_node_ids, ctx)
-        _validate_boundary(group, edges, detail_node_ids, ctx)
 
     return {
         "title":       title,

@@ -12,15 +12,22 @@ def build_tool_description() -> str:
         "  • Call graph walkthroughs       Add code_snippet + previous_code_snippet to\n"
         "  • API / schema maps               show what changed and why.\n"
         "                                → Examples: code_impl_plan, code_bug_fix\n\n"
-        "System + code together          Give a group a 'detail' block (nested\n"
-        "                                nodes/edges using code-level kinds) → adds\n"
-        "                                a 'Code Detail' tab with a per-module drill-down.\n"
+        "System + code together          Model a group's members as the real code-level\n"
+        "                                nodes (functions/classes/etc) instead of a single\n"
+        "                                service node → the group IS the drill-down, with\n"
+        "                                no separate nested spec to keep in sync.\n"
         "                                → Example: mixed_levels\n\n"
+        "Repeated/replicated subsystems   Cells, shards, replicas, regions: write the first\n"
+        "                                instance's nodes/edges once, put them in a group,\n"
+        "                                then give each other instance's group a 'clone_of'\n"
+        "                                pointing at the first — no hand-duplicated JSON.\n"
+        "                                → Example: sys_replicated_cells\n\n"
 
         "── ALWAYS START HERE ──────────────────────────────────────────────────────────\n"
         "Call get_example('sys_microservices') for system-level, get_example('code_bug_fix')\n"
-        "for code-level, or get_example('mixed_levels') to combine both. Read the example,\n"
-        "then adapt it for your system.\n\n"
+        "for code-level, get_example('mixed_levels') to combine both, or\n"
+        "get_example('sys_replicated_cells') for clone_of. Read the example, then adapt it\n"
+        "for your system.\n\n"
 
         "── SPEC SCHEMA ────────────────────────────────────────────────────────────────\n"
         "{\n"
@@ -54,30 +61,27 @@ def build_tool_description() -> str:
         '      "protocol": "HTTP"     // optional — informational\n'
         "    }\n"
         "  ],\n"
-        '  "groups": [                // optional — creates labeled bounding boxes + a Layers tab\n'
+        '  "groups": [                // optional — a group IS a node: collapsed by default\n'
+        "                              // (one box), expandable in place to reveal its real\n"
+        "                              // members. Also creates a Layers tab if kind='layer'.\n"
         "    {\n"
         '      "id": "frontend",\n'
         '      "label": "Frontend",\n'
         '      "kind": "layer",       // layer | package | team | domain | deployment\n'
-        '      "members": ["ui", "client"],\n'
-        '      // optional — nested spec for this group, shown in a "Code Detail" tab\n'
-        '      // with a per-group dropdown, AND expandable in place on the node itself\n'
-        '      // (click the ⤢ on an expandable node in the Architecture diagram to swap\n'
-        '      // it for this subgraph, click ✕ on the resulting box to collapse back).\n'
-        '      // Same nodes/edges/groups/sequences shape as the top level, own id\n'
-        '      // namespace, typically code-level kinds/fields.\n'
-        '      "detail": {\n'
-        '        "nodes": [{"id": "handler", "label": "handle_request()", "kind": "function",\n'
-        '                   "signature": "def handle_request(req) -> Response", "code_snippet": "..."}],\n'
-        '        "edges": [{"from": "handler", "to": "handler", "kind": "calls"}],\n'
-        '        "groups": [],     // optional — same shape as top-level groups\n'
-        '        "sequences": [],  // optional — same shape as top-level sequences\n'
-        '        // REQUIRED if any top-level edge touches this group\'s members: maps every\n'
-        '        // such external neighbor\'s node id to the specific detail node id that\n'
-        '        // should receive its arrow once expanded. No default/fallback — pick the\n'
-        '        // exact node, e.g. the one a label like "verify token" actually calls.\n'
-        '        "boundary": {"ui": "handler"}\n'
-        "      }\n"
+        '      "members": ["ui", "client"],  // node ids and/or other group ids (nesting).\n'
+        '                                     // A node/group may have at most ONE parent\n'
+        '                                     // group — that single-parent rule is what\n'
+        '                                     // makes collapse/expand unambiguous: every\n'
+        '                                     // edge into a hidden member redirects to its\n'
+        '                                     // one collapsed ancestor automatically, no\n'
+        '                                     // manual boundary map needed.\n'
+        '      // optional — reuse another group\'s entire member subtree (nodes, nested\n'
+        '      // groups, and the edges among/touching them) under this group\'s own id-\n'
+        '      // prefix instead of hand-duplicating it. The source must NOT itself be a\n'
+        '      // clone (no chaining), and every id nested under the source must be\n'
+        '      // prefixed with the source group\'s own id (e.g. cell_a_worker under group\n'
+        '      // "cell_a") so the new ids can be derived mechanically (cell_b_worker).\n'
+        '      "clone_of": "cell_a"\n'
         "    }\n"
         "  ],\n"
         '  "sequences": [             // optional — creates a Sequences tab\n'
@@ -119,27 +123,28 @@ def build_tool_description() -> str:
         "                 added (green) · modified (amber) · deleted (red/faded)\n\n"
 
         "── WHAT THE TOOL PRODUCES ─────────────────────────────────────────────────────\n"
-        "Architecture tab   Box-and-arrow diagram. Click any node for a detail panel\n"
-        "                   (shows description, signature, code snippet, edges, and which\n"
-        "                   sequences touch this node — click one to play it, see below).\n"
-        "                   Filter bar lets users hide/show node kinds and change statuses.\n"
-        "                   If sequences exist, an 'Animate' control plays any sequence as\n"
-        "                   a traveling-pulse trail directly on top of the diagram. Nodes\n"
-        "                   whose group has a 'detail' block show a ⤢ to expand in place —\n"
-        "                   the node is swapped for its detail subgraph (boxed, with a ✕ to\n"
-        "                   collapse), external edges rerouted per detail.boundary.\n"
+        "Architecture tab   Box-and-arrow diagram. Every group starts collapsed — a single\n"
+        "                   box with a ⤢ to expand it in place into its real members\n"
+        "                   (boxed, with a ✕ to collapse back); edges into a collapsed\n"
+        "                   group land on the box automatically, no manual remapping.\n"
+        "                   Click any node or group for a detail panel (description,\n"
+        "                   signature, code snippet, edges / members, and which sequences\n"
+        "                   touch it — click one to play it, see below). Filter bar lets\n"
+        "                   users hide/show node kinds, change statuses, and groups. If\n"
+        "                   sequences exist, an 'Animate' control plays any sequence as a\n"
+        "                   traveling-pulse trail, automatically landing on whatever's\n"
+        "                   currently visible (a real node or its collapsed ancestor).\n"
         "Layers tab         Horizontal swim-lanes (only if groups with kind='layer' exist).\n"
         "Sequences tab      Sequence diagrams with dropdown selector (only if sequences exist).\n"
         "                   Steps with example/example_before/example_after get a click-to-\n"
         "                   reveal panel (snippet or before/after diff) — optional, per step.\n"
         "                   Each diagram also has a scrub/play timeline that animates the\n"
         "                   steps in order (traveling pulse along each call, visited trail).\n"
-        "Code Detail tab    Per-group drill-down with a module dropdown (only if any group\n"
-        "                   has a 'detail' block) — each module is the full Architecture-\n"
-        "                   tab experience (filter bar, Animate control, detail panels)\n"
-        "                   scoped to that group's own nodes/edges/groups/sequences.\n"
-        "Changes tab        Before/after diff view grouped by added/modified/deleted\n"
-        "                   (checks top-level nodes AND group 'detail' nodes).\n"
+        "Code Detail tab    Per-group drill-down with a module dropdown (only if groups\n"
+        "                   exist) — each module is the full Architecture-tab experience\n"
+        "                   (filter bar, Animate control, detail panels) scoped to that\n"
+        "                   group's own subtree (itself plus any nested groups/nodes).\n"
+        "Changes tab        Before/after diff view grouped by added/modified/deleted.\n"
         "Matrix tab         Adjacency matrix — who calls whom at a glance.\n"
         "Components tab     Filterable table of all nodes with all metadata.\n\n"
 

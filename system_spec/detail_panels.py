@@ -1,6 +1,9 @@
 from collections import defaultdict
 
-from .styles import NODE_KIND_STYLES, _DEFAULT_NODE_STYLE, EDGE_KIND_STYLES, _DEFAULT_EDGE_STYLE, _infer_lang, _e
+from .styles import (
+    NODE_KIND_STYLES, _DEFAULT_NODE_STYLE, EDGE_KIND_STYLES, _DEFAULT_EDGE_STYLE,
+    GROUP_KIND_STYLES, _DEFAULT_GROUP_STYLE, _infer_lang, _e,
+)
 
 # ── Detail panels ─────────────────────────────────────────────────────────────
 
@@ -158,3 +161,54 @@ def render_legend(spec: dict) -> str:
 
     parts.append('</div>')
     return "".join(parts)
+
+
+# ── Group panels ──────────────────────────────────────────────────────────────
+# Every group is a collapsible node — clicking its placeholder box (or its
+# expanded bounding box) needs a panel in the DOM the same way a real node
+# does, just describing the group's kind and its own members instead.
+
+def render_group_panels(spec: dict, id_prefix: str = "") -> str:
+    groups = spec.get("groups", [])
+    if not groups:
+        return ""
+
+    node_by_id  = {n["id"]: n for n in spec.get("nodes", [])}
+    group_by_id = {g["id"]: g for g in groups}
+
+    def member_label(mid: str) -> str:
+        if mid in node_by_id:
+            return node_by_id[mid].get("label", mid)
+        if mid in group_by_id:
+            return group_by_id[mid].get("label", mid)
+        return mid
+
+    panels = []
+    for group in groups:
+        gid  = group["id"]
+        kind = group.get("kind", "")
+        gst  = GROUP_KIND_STYLES.get(kind, _DEFAULT_GROUP_STYLE)
+        members = group.get("members", [])
+
+        html = f'<div class="sys-panel" id="panel-{_e(id_prefix + gid)}" style="display:none">'
+        html += '<div class="sys-ph">'
+        html += f'<span style="color:{gst["stroke"]};font-size:14px">▣</span>'
+        html += f'<span class="sys-plabel">{_e(group.get("label", gid))}</span>'
+        if kind:
+            html += f'<span class="sys-kbadge" style="color:{gst["stroke"]};border-color:{gst["stroke"]}">{_e(kind)}</span>'
+        html += '</div>'
+
+        html += '<dl class="sys-meta">'
+        html += f'<dt>Members</dt><dd>{len(members)}</dd>'
+        html += '</dl>'
+
+        if members:
+            html += '<div class="sys-tags">'
+            for m in members:
+                html += f'<span class="sys-tag">{_e(member_label(m))}</span>'
+            html += '</div>'
+
+        html += '</div>'
+        panels.append(html)
+
+    return "\n".join(panels)
