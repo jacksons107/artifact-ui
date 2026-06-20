@@ -49,9 +49,15 @@ The Code Detail tab is this same per-group expanded view, just listed in a modul
 - Use `AskUserQuestion` for option selection — prefer `render_artifact(mode='interactive')`.
 - Skip calling `get_example` — the schema has details that aren't obvious from the quick reference.
 
+## Code layout
+
+The client-side diagram engine lives as several plain (non-IIFE-wrapped) fragments under `system_spec/arch_engine/`, numerically prefixed so sorted-filename order is build order (`00_constants_and_utils.js`, `10_layout.js`, `20_visibility.js`, `30_draw.js`, `40_bootstrap.js`). `system_spec/arch_block.py` concatenates them and wraps the result in one IIFE at build time — that's the only place the wrapper exists, so the shipped script is unchanged; don't add a wrapper to an individual fragment file.
+
+The page's embedded CSS/JS is split by feature into `system_spec/assets_common.py`, `assets_sequences.py`, `assets_filters.py`, `assets_misc.py` (each exporting `CSS`/`JS`), assembled by the thin `system_spec/assets.py`. Add new styling/JS to whichever feature module it belongs with, not back into `assets.py` itself.
+
 ## Testing the layout engine
 
-`system_spec/arch_engine.js`'s layout logic (cycle handling, crossing reduction, recursive hierarchical group-box layout) has a property + regression test suite in `tests/arch_engine/` (fast-check + Node's built-in test runner — dev-only, never bundled into rendered output):
+`system_spec/arch_engine/`'s layout logic (cycle handling, crossing reduction, recursive hierarchical group-box layout) has a property + regression test suite in `tests/arch_engine/` (fast-check + Node's built-in test runner — dev-only, never bundled into rendered output):
 
 ```
 cd tests/arch_engine && npm install && npm test
@@ -59,7 +65,7 @@ cd tests/arch_engine && npm install && npm test
 
 The bundled examples used by `get_example`/`system_spec_examples.py` live as JSON files under `system_spec/examples/*.json` — that's the one source of truth for both the Python loader and the test suite's regression fixtures; don't hand-duplicate example data elsewhere.
 
-The Architecture filter bar's toggle behavior (`system_spec/assets.py`'s `_applyArchFilter`, plus its interaction with `arch_engine.js`'s expand/collapse re-renders) has its own DOM-level property + regression suite in `tests/interactions/` (fast-check + jsdom — dev-only). It renders real specs through the actual Python pipeline (`render_helper.js` shells out to `python3`), so it always exercises the real, current filter logic:
+The Architecture filter bar's toggle behavior (`system_spec/assets_filters.py`'s `_applyArchFilter`, plus its interaction with the engine's expand/collapse re-renders) has its own DOM-level property + regression suite in `tests/interactions/` (fast-check + jsdom — dev-only). It renders real specs through the actual Python pipeline (`render_helper.js` shells out to `python3`), so it always exercises the real, current filter logic:
 
 ```
 cd tests/interactions && npm install && npm test

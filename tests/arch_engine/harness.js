@@ -2,19 +2,19 @@
 const fs = require("fs");
 const path = require("path");
 
-const ENGINE_PATH = path.join(__dirname, "..", "..", "system_spec", "arch_engine.js");
+const ENGINE_DIR = path.join(__dirname, "..", "..", "system_spec", "arch_engine");
 
-// Loads the real, shipped arch_engine.js and exposes its internal (otherwise
-// un-exported) pure functions for testing, by stripping the outer IIFE
-// wrapper and appending a `return {...}` before evaluating it. This is the
-// only place that knows about the engine's internal function names — if a
+// Loads the real, shipped engine source — the same plain (non-IIFE-wrapped)
+// fragments under system_spec/arch_engine/, concatenated in the same
+// sorted-filename order arch_block.py uses to build the real IIFE — and
+// exposes its internal (otherwise un-exported) pure functions for testing
+// by appending a `return {...}` before evaluating it. This is the only
+// place that knows about the engine's internal function names — if a
 // rename breaks this, that's the harness reminding you to update the test
 // names, not a real engine bug.
 function loadEngineInternals() {
-  const src = fs.readFileSync(ENGINE_PATH, "utf8");
-  const body = src
-    .replace(/\(function \(\) \{\s*"use strict";/, "")
-    .replace(/\}\)\(\);\s*$/, "");
+  const files = fs.readdirSync(ENGINE_DIR).filter((f) => f.endsWith(".js")).sort();
+  const body = files.map((f) => fs.readFileSync(path.join(ENGINE_DIR, f), "utf8")).join("\n");
   const exposed = body + `
     return {
       findBackEdgeSet,
@@ -43,4 +43,4 @@ function loadEngineInternals() {
   return fn(fakeDocument, fakeWindow);
 }
 
-module.exports = { loadEngineInternals, ENGINE_PATH };
+module.exports = { loadEngineInternals, ENGINE_DIR };

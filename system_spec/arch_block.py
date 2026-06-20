@@ -22,8 +22,18 @@ from .sequence_diagram import render_timeline_widget
 # arch_engine.js is the single client-side implementation that computes
 # positions and draws the SVG, for both the first paint and any later
 # expand/collapse of a group's placeholder node into its real members.
-
-_ARCH_ENGINE_JS = (Path(__file__).parent / "arch_engine.js").read_text(encoding="utf-8")
+#
+# The engine's source lives as several plain (non-IIFE-wrapped) fragments
+# under system_spec/arch_engine/, numerically prefixed so sorted order is
+# build order — concatenated and wrapped in one IIFE here, the only place
+# that wrapper exists. tests/arch_engine/harness.js assembles the same
+# files the same way for testing.
+_ARCH_ENGINE_DIR = Path(__file__).parent / "arch_engine"
+_ARCH_ENGINE_JS = (
+    '(function () {\n"use strict";\n'
+    + "\n".join(f.read_text(encoding="utf-8") for f in sorted(_ARCH_ENGINE_DIR.glob("*.js")))
+    + "\n})();\n"
+)
 
 
 def build_node_sequences(spec: dict) -> dict:
