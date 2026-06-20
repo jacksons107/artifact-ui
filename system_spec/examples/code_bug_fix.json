@@ -1,0 +1,183 @@
+{
+  "title": "Bug Fix — Cache Invalidation Race Condition",
+  "description": "A race condition in the product cache allowed stale data to be served after an update. The fix adds a write-through invalidation step inside the DB transaction.",
+  "nodes": [
+    {
+      "id": "update_product",
+      "label": "update_product()",
+      "kind": "function",
+      "description": "Updates a product record. Previously invalidated the cache AFTER committing, creating a window where another request could repopulate the cache with stale data. Fixed by invalidating inside the transaction.",
+      "file_path": "src/products/service.py",
+      "line_range": [
+        42,
+        61
+      ],
+      "status": "modified",
+      "tech": "Python",
+      "signature": "def update_product(db: Session, product_id: int, data: ProductUpdate) -> Product",
+      "previous_code_snippet": "def update_product(db: Session, product_id: int, data: ProductUpdate) -> Product:\n    product = db.get(Product, product_id)\n    if not product:\n        raise NotFoundError(product_id)\n    for field, value in data.dict(exclude_unset=True).items():\n        setattr(product, field, value)\n    db.commit()\n    db.refresh(product)\n    cache.delete(f'product:{product_id}')  # BUG: too late — window exists here\n    return product",
+      "code_snippet": "def update_product(db: Session, product_id: int, data: ProductUpdate) -> Product:\n    product = db.get(Product, product_id)\n    if not product:\n        raise NotFoundError(product_id)\n    for field, value in data.dict(exclude_unset=True).items():\n        setattr(product, field, value)\n    cache.delete(f'product:{product_id}')  # FIX: invalidate before commit\n    db.commit()\n    db.refresh(product)\n    return product"
+    },
+    {
+      "id": "get_product",
+      "label": "get_product()",
+      "kind": "function",
+      "description": "Cache-aside read. Checks cache first; on miss, loads from DB and populates cache. Unchanged.",
+      "file_path": "src/products/service.py",
+      "line_range": [
+        22,
+        38
+      ],
+      "status": "stable",
+      "tech": "Python",
+      "signature": "def get_product(db: Session, product_id: int) -> Product"
+    },
+    {
+      "id": "cache_delete",
+      "label": "cache.delete()",
+      "kind": "function",
+      "description": "Redis DEL call. Fast synchronous operation.",
+      "file_path": "src/cache.py",
+      "status": "stable",
+      "tech": "Python"
+    },
+    {
+      "id": "db_session",
+      "label": "DB Session",
+      "kind": "db",
+      "tech": "PostgreSQL",
+      "description": "SQLAlchemy session. db.commit() flushes and ends the transaction."
+    },
+    {
+      "id": "cache",
+      "label": "Cache",
+      "kind": "db",
+      "tech": "Redis",
+      "description": "Product cache. Keys are 'product:{id}', TTL 5 minutes."
+    },
+    {
+      "id": "product_router",
+      "label": "product_router.py",
+      "kind": "file",
+      "description": "FastAPI router — calls update_product on PATCH /products/{id}. Unchanged.",
+      "file_path": "src/products/product_router.py",
+      "status": "stable",
+      "tech": "Python"
+    }
+  ],
+  "edges": [
+    {
+      "from": "product_router",
+      "to": "update_product",
+      "kind": "calls",
+      "label": "PATCH /products/{id}"
+    },
+    {
+      "from": "product_router",
+      "to": "get_product",
+      "kind": "calls",
+      "label": "GET /products/{id}"
+    },
+    {
+      "from": "update_product",
+      "to": "db_session",
+      "kind": "writes",
+      "label": "commit"
+    },
+    {
+      "from": "update_product",
+      "to": "cache_delete",
+      "kind": "calls",
+      "label": "invalidate"
+    },
+    {
+      "from": "cache_delete",
+      "to": "cache",
+      "kind": "writes",
+      "label": "DEL key"
+    },
+    {
+      "from": "get_product",
+      "to": "cache",
+      "kind": "reads",
+      "label": "GET key"
+    },
+    {
+      "from": "get_product",
+      "to": "db_session",
+      "kind": "reads",
+      "label": "on miss"
+    }
+  ],
+  "sequences": [
+    {
+      "id": "race",
+      "label": "Bug — race window after commit",
+      "steps": [
+        {
+          "from": "product_router",
+          "to": "update_product",
+          "label": "PATCH product"
+        },
+        {
+          "from": "update_product",
+          "to": "db_session",
+          "label": "db.commit()  ← committed"
+        },
+        {
+          "from": "product_router",
+          "to": "get_product",
+          "label": "concurrent GET (cache miss)"
+        },
+        {
+          "from": "get_product",
+          "to": "db_session",
+          "label": "load from DB → stale repopulates cache",
+          "example": "{\"id\": 42, \"name\": \"Widget\", \"price\": 9.99}  // old price, written back to cache",
+          "example_lang": "json"
+        },
+        {
+          "from": "update_product",
+          "to": "cache_delete",
+          "label": "cache.delete()  ← too late"
+        }
+      ]
+    },
+    {
+      "id": "fixed",
+      "label": "Fix — invalidate inside transaction",
+      "steps": [
+        {
+          "from": "product_router",
+          "to": "update_product",
+          "label": "PATCH product"
+        },
+        {
+          "from": "update_product",
+          "to": "cache_delete",
+          "label": "cache.delete()  ← before commit"
+        },
+        {
+          "from": "cache_delete",
+          "to": "cache",
+          "label": "DEL product:id"
+        },
+        {
+          "from": "update_product",
+          "to": "db_session",
+          "label": "db.commit()"
+        },
+        {
+          "from": "product_router",
+          "to": "get_product",
+          "label": "concurrent GET"
+        },
+        {
+          "from": "get_product",
+          "to": "cache",
+          "label": "miss → loads fresh from DB"
+        }
+      ]
+    }
+  ]
+}

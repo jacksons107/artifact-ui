@@ -1,0 +1,291 @@
+{
+  "title": "Data Ingestion Pipeline",
+  "description": "Event-driven pipeline for ingesting, transforming, and storing telemetry data from IoT devices.",
+  "nodes": [
+    {
+      "id": "device",
+      "label": "IoT Device",
+      "kind": "external",
+      "description": "Publishes telemetry at up to 1 Hz"
+    },
+    {
+      "id": "ingest",
+      "label": "Ingest API",
+      "kind": "service",
+      "description": "Validates and fans out inbound events",
+      "tech": "Go",
+      "tags": [
+        "high-throughput"
+      ]
+    },
+    {
+      "id": "raw",
+      "label": "Raw Events Topic",
+      "kind": "queue",
+      "tech": "Kafka",
+      "description": "Unprocessed events, 7-day retention"
+    },
+    {
+      "id": "transform",
+      "label": "Transform Worker",
+      "kind": "service",
+      "description": "Normalizes units, deduplicates, enriches with device metadata",
+      "tech": "Python"
+    },
+    {
+      "id": "dlq",
+      "label": "Dead Letter Queue",
+      "kind": "queue",
+      "tech": "Kafka",
+      "description": "Failed transform events for investigation"
+    },
+    {
+      "id": "enriched",
+      "label": "Enriched Topic",
+      "kind": "queue",
+      "tech": "Kafka",
+      "description": "Processed, ready-to-store events"
+    },
+    {
+      "id": "loader",
+      "label": "Batch Loader",
+      "kind": "service",
+      "description": "Micro-batches enriched events into the warehouse",
+      "tech": "Python"
+    },
+    {
+      "id": "warehouse",
+      "label": "Data Warehouse",
+      "kind": "db",
+      "tech": "BigQuery",
+      "description": "Long-term storage, queried by analysts"
+    },
+    {
+      "id": "stream",
+      "label": "Stream Processor",
+      "kind": "service",
+      "description": "Windowed aggregations for real-time dashboards",
+      "tech": "Flink"
+    },
+    {
+      "id": "cache",
+      "label": "Metrics Cache",
+      "kind": "db",
+      "tech": "Redis",
+      "description": "Latest aggregates, TTL 60s"
+    },
+    {
+      "id": "api",
+      "label": "Dashboard API",
+      "kind": "service",
+      "description": "Serves real-time and historical metrics to the UI",
+      "tech": "Go"
+    },
+    {
+      "id": "ui",
+      "label": "Dashboard UI",
+      "kind": "external",
+      "description": "Analyst-facing dashboard"
+    }
+  ],
+  "edges": [
+    {
+      "from": "device",
+      "to": "ingest",
+      "kind": "calls",
+      "label": "HTTPS POST"
+    },
+    {
+      "from": "ingest",
+      "to": "raw",
+      "kind": "emits",
+      "label": "publish"
+    },
+    {
+      "from": "transform",
+      "to": "raw",
+      "kind": "subscribes",
+      "async": true
+    },
+    {
+      "from": "transform",
+      "to": "enriched",
+      "kind": "emits",
+      "label": "publish"
+    },
+    {
+      "from": "transform",
+      "to": "dlq",
+      "kind": "emits",
+      "label": "on error",
+      "async": true
+    },
+    {
+      "from": "loader",
+      "to": "enriched",
+      "kind": "subscribes",
+      "async": true
+    },
+    {
+      "from": "loader",
+      "to": "warehouse",
+      "kind": "writes",
+      "label": "batch insert"
+    },
+    {
+      "from": "stream",
+      "to": "enriched",
+      "kind": "subscribes",
+      "async": true
+    },
+    {
+      "from": "stream",
+      "to": "cache",
+      "kind": "writes",
+      "label": "aggregates"
+    },
+    {
+      "from": "api",
+      "to": "cache",
+      "kind": "reads",
+      "label": "real-time"
+    },
+    {
+      "from": "api",
+      "to": "warehouse",
+      "kind": "reads",
+      "label": "historical"
+    },
+    {
+      "from": "ui",
+      "to": "api",
+      "kind": "calls",
+      "label": "HTTPS"
+    }
+  ],
+  "groups": [
+    {
+      "id": "ingestion",
+      "label": "Ingestion",
+      "kind": "layer",
+      "members": [
+        "ingest",
+        "raw"
+      ]
+    },
+    {
+      "id": "processing",
+      "label": "Processing",
+      "kind": "layer",
+      "members": [
+        "transform",
+        "dlq",
+        "enriched"
+      ]
+    },
+    {
+      "id": "storage",
+      "label": "Storage",
+      "kind": "layer",
+      "members": [
+        "loader",
+        "warehouse",
+        "stream",
+        "cache"
+      ]
+    },
+    {
+      "id": "serving",
+      "label": "Serving",
+      "kind": "layer",
+      "members": [
+        "api",
+        "ui"
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "ingest-store",
+      "label": "Ingest & Store",
+      "steps": [
+        {
+          "from": "device",
+          "to": "ingest",
+          "label": "POST /ingest HTTPS"
+        },
+        {
+          "from": "ingest",
+          "to": "raw",
+          "label": "publish to raw topic"
+        },
+        {
+          "from": "transform",
+          "to": "raw",
+          "label": "consume event"
+        },
+        {
+          "from": "transform",
+          "to": "enriched",
+          "label": "publish enriched"
+        },
+        {
+          "from": "loader",
+          "to": "enriched",
+          "label": "consume batch"
+        },
+        {
+          "from": "loader",
+          "to": "warehouse",
+          "label": "batch insert"
+        },
+        {
+          "from": "stream",
+          "to": "enriched",
+          "label": "consume windowed"
+        },
+        {
+          "from": "stream",
+          "to": "cache",
+          "label": "write aggregates"
+        }
+      ]
+    },
+    {
+      "id": "view-dashboard",
+      "label": "View Dashboard",
+      "steps": [
+        {
+          "from": "ui",
+          "to": "api",
+          "label": "GET /metrics/realtime"
+        },
+        {
+          "from": "api",
+          "to": "cache",
+          "label": "read TTL aggregates"
+        },
+        {
+          "from": "api",
+          "to": "ui",
+          "label": "current metrics"
+        },
+        {
+          "from": "ui",
+          "to": "api",
+          "label": "GET /metrics/historical"
+        },
+        {
+          "from": "api",
+          "to": "warehouse",
+          "label": "BigQuery SQL"
+        },
+        {
+          "from": "api",
+          "to": "ui",
+          "label": "time-series data"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,322 @@
+{
+  "title": "E-Commerce Platform — Service Architecture",
+  "description": "Microservices architecture for a mid-size e-commerce platform. Each service owns its database. The API Gateway is the only public-facing entry point.",
+  "nodes": [
+    {
+      "id": "client",
+      "label": "Web Client",
+      "kind": "external",
+      "description": "React SPA served via CDN"
+    },
+    {
+      "id": "mobile",
+      "label": "Mobile App",
+      "kind": "external",
+      "description": "iOS/Android, talks directly to gateway"
+    },
+    {
+      "id": "gateway",
+      "label": "API Gateway",
+      "kind": "service",
+      "description": "Auth, rate-limiting, routing. Only public-facing entry point.",
+      "tech": "nginx + lua",
+      "tags": [
+        "critical",
+        "public-facing"
+      ]
+    },
+    {
+      "id": "orders",
+      "label": "Order Service",
+      "kind": "service",
+      "description": "Create, fulfill, cancel orders. Emits OrderPlaced events.",
+      "tech": "Go",
+      "owner": "fulfillment-team"
+    },
+    {
+      "id": "inventory",
+      "label": "Inventory Service",
+      "kind": "service",
+      "description": "Tracks stock levels. Subscribes to OrderPlaced to reserve stock.",
+      "tech": "Go",
+      "owner": "fulfillment-team"
+    },
+    {
+      "id": "payments",
+      "label": "Payment Service",
+      "kind": "service",
+      "description": "Charge and refund. Talks to Stripe.",
+      "tech": "Node.js",
+      "owner": "payments-team",
+      "tags": [
+        "pci-scope"
+      ]
+    },
+    {
+      "id": "users",
+      "label": "User Service",
+      "kind": "service",
+      "description": "Profile, auth tokens, preferences.",
+      "tech": "Python",
+      "owner": "platform-team"
+    },
+    {
+      "id": "notify",
+      "label": "Notification Svc",
+      "kind": "service",
+      "description": "Email and push. Consumes events from the bus.",
+      "tech": "Python",
+      "owner": "platform-team"
+    },
+    {
+      "id": "orderdb",
+      "label": "Orders DB",
+      "kind": "db",
+      "tech": "PostgreSQL"
+    },
+    {
+      "id": "invdb",
+      "label": "Inventory DB",
+      "kind": "db",
+      "tech": "PostgreSQL"
+    },
+    {
+      "id": "paydb",
+      "label": "Payments DB",
+      "kind": "db",
+      "tech": "PostgreSQL"
+    },
+    {
+      "id": "userdb",
+      "label": "Users DB",
+      "kind": "db",
+      "tech": "PostgreSQL"
+    },
+    {
+      "id": "bus",
+      "label": "Event Bus",
+      "kind": "queue",
+      "description": "Async domain events (OrderPlaced, PaymentFailed, etc.)",
+      "tech": "Kafka"
+    },
+    {
+      "id": "stripe",
+      "label": "Stripe",
+      "kind": "external",
+      "description": "Payment processor"
+    }
+  ],
+  "edges": [
+    {
+      "from": "client",
+      "to": "gateway",
+      "kind": "calls",
+      "label": "HTTPS"
+    },
+    {
+      "from": "mobile",
+      "to": "gateway",
+      "kind": "calls",
+      "label": "HTTPS"
+    },
+    {
+      "from": "gateway",
+      "to": "orders",
+      "kind": "calls",
+      "label": "REST"
+    },
+    {
+      "from": "gateway",
+      "to": "users",
+      "kind": "calls",
+      "label": "REST"
+    },
+    {
+      "from": "gateway",
+      "to": "inventory",
+      "kind": "calls",
+      "label": "REST"
+    },
+    {
+      "from": "orders",
+      "to": "payments",
+      "kind": "calls",
+      "label": "gRPC"
+    },
+    {
+      "from": "orders",
+      "to": "orderdb",
+      "kind": "writes",
+      "label": "SQL"
+    },
+    {
+      "from": "orders",
+      "to": "bus",
+      "kind": "emits",
+      "label": "OrderPlaced"
+    },
+    {
+      "from": "inventory",
+      "to": "invdb",
+      "kind": "writes",
+      "label": "SQL"
+    },
+    {
+      "from": "inventory",
+      "to": "bus",
+      "kind": "subscribes",
+      "async": true
+    },
+    {
+      "from": "payments",
+      "to": "paydb",
+      "kind": "writes",
+      "label": "SQL"
+    },
+    {
+      "from": "payments",
+      "to": "stripe",
+      "kind": "calls",
+      "label": "HTTPS"
+    },
+    {
+      "from": "users",
+      "to": "userdb",
+      "kind": "writes",
+      "label": "SQL"
+    },
+    {
+      "from": "notify",
+      "to": "bus",
+      "kind": "subscribes",
+      "async": true
+    }
+  ],
+  "groups": [
+    {
+      "id": "public",
+      "label": "Public Zone",
+      "kind": "layer",
+      "members": [
+        "client",
+        "mobile"
+      ]
+    },
+    {
+      "id": "edge",
+      "label": "Edge Layer",
+      "kind": "layer",
+      "members": [
+        "gateway"
+      ]
+    },
+    {
+      "id": "fulfillment",
+      "label": "Fulfillment",
+      "kind": "domain",
+      "members": [
+        "orders",
+        "inventory"
+      ]
+    },
+    {
+      "id": "data",
+      "label": "Data Layer",
+      "kind": "layer",
+      "members": [
+        "orderdb",
+        "invdb",
+        "paydb",
+        "userdb"
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "place-order",
+      "label": "Place Order (happy path)",
+      "steps": [
+        {
+          "from": "client",
+          "to": "gateway",
+          "label": "POST /orders HTTPS",
+          "example": "{\"items\": [{\"sku\": \"WIDGET-1\", \"qty\": 2}], \"shipping_address_id\": \"addr_88f3\"}",
+          "example_lang": "json"
+        },
+        {
+          "from": "gateway",
+          "to": "orders",
+          "label": "create order REST"
+        },
+        {
+          "from": "orders",
+          "to": "payments",
+          "label": "charge card gRPC"
+        },
+        {
+          "from": "payments",
+          "to": "paydb",
+          "label": "record payment SQL"
+        },
+        {
+          "from": "payments",
+          "to": "orders",
+          "label": "payment confirmed"
+        },
+        {
+          "from": "orders",
+          "to": "orderdb",
+          "label": "persist order SQL"
+        },
+        {
+          "from": "orders",
+          "to": "bus",
+          "label": "emit OrderPlaced"
+        },
+        {
+          "from": "inventory",
+          "to": "bus",
+          "label": "consume OrderPlaced"
+        },
+        {
+          "from": "notify",
+          "to": "bus",
+          "label": "consume → send email"
+        }
+      ]
+    },
+    {
+      "id": "user-login",
+      "label": "User Login",
+      "steps": [
+        {
+          "from": "client",
+          "to": "gateway",
+          "label": "POST /auth/login HTTPS"
+        },
+        {
+          "from": "gateway",
+          "to": "users",
+          "label": "verify credentials REST"
+        },
+        {
+          "from": "users",
+          "to": "userdb",
+          "label": "lookup user SQL",
+          "example": "SELECT id, password_hash FROM users WHERE email = $1",
+          "example_lang": "sql"
+        },
+        {
+          "from": "users",
+          "to": "gateway",
+          "label": "JWT + refresh token"
+        },
+        {
+          "from": "gateway",
+          "to": "client",
+          "label": "200 OK + tokens"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "title": "Rails Monolith — Module Architecture",
+  "description": "Module-level view of a Rails monolith before a planned decomposition. Dashed edges highlight the coupling that makes decomposition hard.",
+  "nodes": [
+    {
+      "id": "web",
+      "label": "Web Controllers",
+      "kind": "module",
+      "description": "ActionController subclasses, session handling, routing",
+      "tech": "Rails"
+    },
+    {
+      "id": "api",
+      "label": "API Controllers",
+      "kind": "module",
+      "description": "JSON API endpoints, token auth",
+      "tech": "Rails"
+    },
+    {
+      "id": "billing",
+      "label": "Billing",
+      "kind": "module",
+      "description": "Subscription management, invoicing, Stripe sync",
+      "tech": "Ruby",
+      "owner": "payments-team",
+      "tags": [
+        "decompose-candidate"
+      ]
+    },
+    {
+      "id": "auth",
+      "label": "Auth",
+      "kind": "module",
+      "description": "Devise + custom RBAC, JWT issuance",
+      "tech": "Ruby",
+      "owner": "platform-team"
+    },
+    {
+      "id": "notifs",
+      "label": "Notifications",
+      "kind": "module",
+      "description": "Email, in-app, push. Uses ActionMailer + Noticed gem",
+      "tech": "Ruby",
+      "tags": [
+        "decompose-candidate"
+      ]
+    },
+    {
+      "id": "jobs",
+      "label": "Background Jobs",
+      "kind": "module",
+      "description": "Sidekiq workers — renewal, digest emails, exports",
+      "tech": "Sidekiq"
+    },
+    {
+      "id": "reports",
+      "label": "Reports",
+      "kind": "module",
+      "description": "SQL-heavy reporting, CSV export",
+      "tech": "Ruby",
+      "tags": [
+        "slow"
+      ]
+    },
+    {
+      "id": "models",
+      "label": "ActiveRecord Models",
+      "kind": "module",
+      "description": "Shared data layer — User, Account, Subscription, Invoice, etc.",
+      "tech": "Rails"
+    },
+    {
+      "id": "db",
+      "label": "PostgreSQL",
+      "kind": "db",
+      "tech": "PostgreSQL 15"
+    },
+    {
+      "id": "redis",
+      "label": "Redis",
+      "kind": "db",
+      "tech": "Redis 7",
+      "description": "Sidekiq queue + session store"
+    },
+    {
+      "id": "stripe",
+      "label": "Stripe",
+      "kind": "external"
+    },
+    {
+      "id": "ses",
+      "label": "AWS SES",
+      "kind": "external",
+      "description": "Email delivery"
+    }
+  ],
+  "edges": [
+    {
+      "from": "web",
+      "to": "auth",
+      "kind": "depends",
+      "label": "before_action"
+    },
+    {
+      "from": "web",
+      "to": "models",
+      "kind": "reads",
+      "label": "ActiveRecord"
+    },
+    {
+      "from": "api",
+      "to": "auth",
+      "kind": "depends",
+      "label": "JWT verify"
+    },
+    {
+      "from": "api",
+      "to": "models",
+      "kind": "reads"
+    },
+    {
+      "from": "billing",
+      "to": "models",
+      "kind": "writes",
+      "label": "Subscription/Invoice"
+    },
+    {
+      "from": "billing",
+      "to": "stripe",
+      "kind": "calls",
+      "label": "HTTPS"
+    },
+    {
+      "from": "billing",
+      "to": "notifs",
+      "kind": "calls",
+      "label": "payment events",
+      "async": true
+    },
+    {
+      "from": "auth",
+      "to": "models",
+      "kind": "reads",
+      "label": "User/Account"
+    },
+    {
+      "from": "notifs",
+      "to": "ses",
+      "kind": "calls",
+      "label": "SMTP"
+    },
+    {
+      "from": "notifs",
+      "to": "models",
+      "kind": "reads"
+    },
+    {
+      "from": "jobs",
+      "to": "billing",
+      "kind": "calls",
+      "label": "renewal job"
+    },
+    {
+      "from": "jobs",
+      "to": "notifs",
+      "kind": "calls",
+      "label": "digest job"
+    },
+    {
+      "from": "jobs",
+      "to": "redis",
+      "kind": "reads",
+      "label": "queue"
+    },
+    {
+      "from": "reports",
+      "to": "models",
+      "kind": "reads",
+      "label": "direct SQL"
+    },
+    {
+      "from": "models",
+      "to": "db",
+      "kind": "reads"
+    }
+  ],
+  "groups": [
+    {
+      "id": "frontend",
+      "label": "Presentation",
+      "kind": "layer",
+      "members": [
+        "web",
+        "api"
+      ]
+    },
+    {
+      "id": "domain",
+      "label": "Domain",
+      "kind": "layer",
+      "members": [
+        "billing",
+        "auth",
+        "notifs",
+        "reports"
+      ]
+    },
+    {
+      "id": "infra",
+      "label": "Infrastructure",
+      "kind": "layer",
+      "members": [
+        "jobs",
+        "models",
+        "db",
+        "redis"
+      ]
+    }
+  ]
+}

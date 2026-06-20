@@ -1,0 +1,92 @@
+{
+  "title": "Replicated Worker Cells — clone_of demo",
+  "description": "A router fans requests out to one of two structurally-identical worker cells. Cell A is modeled once; Cell B is declared with clone_of so its worker/db pair and the router edge into it don't have to be hand-duplicated. Both cells render collapsed by default — expand either to see its real internals.",
+  "nodes": [
+    {
+      "id": "client",
+      "label": "Client",
+      "kind": "external",
+      "description": "Issues work requests."
+    },
+    {
+      "id": "router",
+      "label": "Global Router",
+      "kind": "service",
+      "description": "Routes each request to a healthy cell.",
+      "tech": "Go"
+    },
+    {
+      "id": "cell_a_worker",
+      "label": "Worker",
+      "kind": "service",
+      "tech": "Python",
+      "description": "Processes the request."
+    },
+    {
+      "id": "cell_a_db",
+      "label": "Cell DB",
+      "kind": "db",
+      "tech": "PostgreSQL"
+    }
+  ],
+  "edges": [
+    {
+      "from": "client",
+      "to": "router",
+      "kind": "calls",
+      "label": "HTTPS"
+    },
+    {
+      "from": "router",
+      "to": "cell_a_worker",
+      "kind": "calls",
+      "label": "route"
+    },
+    {
+      "from": "cell_a_worker",
+      "to": "cell_a_db",
+      "kind": "writes",
+      "label": "SQL"
+    }
+  ],
+  "groups": [
+    {
+      "id": "cell_a",
+      "label": "Cell A",
+      "kind": "deployment",
+      "members": [
+        "cell_a_worker",
+        "cell_a_db"
+      ]
+    },
+    {
+      "id": "cell_b",
+      "label": "Cell B",
+      "kind": "deployment",
+      "clone_of": "cell_a"
+    }
+  ],
+  "sequences": [
+    {
+      "id": "route-to-a",
+      "label": "Route to Cell A",
+      "steps": [
+        {
+          "from": "client",
+          "to": "router",
+          "label": "POST /work"
+        },
+        {
+          "from": "router",
+          "to": "cell_a_worker",
+          "label": "route → Cell A"
+        },
+        {
+          "from": "cell_a_worker",
+          "to": "cell_a_db",
+          "label": "persist result"
+        }
+      ]
+    }
+  ]
+}

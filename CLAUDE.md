@@ -48,3 +48,13 @@ The Code Detail tab is this same per-group expanded view, just listed in a modul
 
 - Use `AskUserQuestion` for option selection — prefer `render_artifact(mode='interactive')`.
 - Skip calling `get_example` — the schema has details that aren't obvious from the quick reference.
+
+## Testing the layout engine
+
+`system_spec/arch_engine.js`'s layout logic (cycle handling, crossing reduction, recursive hierarchical group-box layout) has a property + regression test suite in `tests/arch_engine/` (fast-check + Node's built-in test runner — dev-only, never bundled into rendered output):
+
+```
+cd tests/arch_engine && npm install && npm test
+```
+
+The bundled examples used by `get_example`/`system_spec_examples.py` live as JSON files under `system_spec/examples/*.json` — that's the one source of truth for both the Python loader and the test suite's regression fixtures; don't hand-duplicate example data elsewhere.

@@ -1,0 +1,12 @@
+{
+  "name": "arch-engine-tests",
+  "private": true,
+  "description": "Property + regression tests for ../../system_spec/arch_engine.js. Dev-only — never bundled into rendered artifacts.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "fast-check": "^3.23.0"
+  }
+}
