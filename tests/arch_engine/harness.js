@@ -24,6 +24,7 @@ function loadEngineInternals() {
       buildParentMap,
       isVisible,
       getVisibleGraph,
+      computeEdgeLabelBoxes,
       PAD, NODE_H, V_GAP, H_GAP, GROUP_PAD_X, GROUP_PAD_TOP, GROUP_PAD_BOTTOM,
     };
   `;

@@ -80,43 +80,26 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
     svg.appendChild(gg);
   });
 
-  /* edges */
+  /* edges — points/label-candidates computed for every edge first, so
+     overlapping labels can be resolved with full knowledge of all of them
+     before anything is drawn (see computeEdgeLabelBoxes). */
+  var pointsByEdge = {};
+  var labelCandidates = [];
   edges.forEach(function (edge, edgeIdx) {
     var sp = positions[edge.from], dp = positions[edge.to];
     if (!sp || !dp || edge.from === edge.to) return;
     var sx = sp.x + sp.w / 2, sy = sp.y + sp.h;
     var ex = dp.x + dp.w / 2, ey = dp.y;
-    var est = styleFor(styles.edge, edge.kind);
-    var color = est.color || styles.edge._default.color;
-    var dashed = !!est.dashed || !!edge.async;
-    var cid = idPrefix + color.replace("#", "");
-    var g = el("g", {
-      class: "sys-edge", "data-kind": edge.kind || "",
-      "data-from": idPrefix + edge.from, "data-to": idPrefix + edge.to,
-      "data-src-groups": directGroupOf(edge.from).join(" "),
-      "data-dst-groups": directGroupOf(edge.to).join(" "),
-    });
-    // Long edges (spanning more than one layer, at whichever level they
-    // were attributed to) route through reserved via-lane points
-    // instead of one straight curve, so they never cut through a real
-    // node sitting in an intermediate layer.
     var vias = (edgeVia[edgeIdx] || []).map(function (viaId) {
       var vp = positions[viaId];
       return { x: vp.x + vp.w / 2, y: vp.y + vp.h / 2 };
     });
     var points = [{ x: sx, y: sy }].concat(vias, [{ x: ex, y: ey }]);
-    var d = "";
-    for (var i = 0; i < points.length - 1; i++) {
-      var seg = curve(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
-      d += i === 0 ? seg.d : seg.d.replace(/^M[^C]*/, " ");
-    }
-    var pathAttrs = { d: d, fill: "none", stroke: color, "stroke-width": 1.5, "marker-end": "url(#arr-" + cid + ")" };
-    if (dashed) pathAttrs["stroke-dasharray"] = "6,4";
-    g.appendChild(el("path", pathAttrs));
+    pointsByEdge[edgeIdx] = points;
     if (edge.label) {
-      // Label sits at the midpoint of the routed path, not the straight
-      // src-to-dst line — for a via-routed edge that's the via point
-      // itself, not wherever the line used to pass before being rerouted.
+      // Desired position is the midpoint of the routed path, not the
+      // straight src-to-dst line — for a via-routed edge that's the via
+      // point itself, not wherever the line used to pass before rerouting.
       var midIdx = (points.length - 1) / 2;
       var mx, my;
       if (Number.isInteger(midIdx)) {
@@ -127,8 +110,36 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
         my = (points[i0].y + points[i1].y) / 2;
       }
       var lw = edge.label.length * 5.8 + 10;
-      g.appendChild(el("rect", { x: (mx - lw / 2).toFixed(1), y: (my - 9).toFixed(1), width: lw.toFixed(1), height: 14, rx: 3, fill: "rgba(250,249,245,0.92)" }));
-      g.appendChild(text(mx, my + 2, edge.label, { "text-anchor": "middle", "font-family": "ui-monospace,monospace", "font-size": 10, fill: color }));
+      labelCandidates.push({ key: edgeIdx, x: mx - lw / 2, y: my - 9, w: lw, h: 14 });
+    }
+  });
+  var labelBoxes = computeEdgeLabelBoxes(labelCandidates);
+
+  edges.forEach(function (edge, edgeIdx) {
+    var points = pointsByEdge[edgeIdx];
+    if (!points) return;
+    var est = styleFor(styles.edge, edge.kind);
+    var color = est.color || styles.edge._default.color;
+    var dashed = !!est.dashed || !!edge.async;
+    var cid = idPrefix + color.replace("#", "");
+    var g = el("g", {
+      class: "sys-edge", "data-kind": edge.kind || "",
+      "data-from": idPrefix + edge.from, "data-to": idPrefix + edge.to,
+      "data-src-groups": directGroupOf(edge.from).join(" "),
+      "data-dst-groups": directGroupOf(edge.to).join(" "),
+    });
+    var d = "";
+    for (var i = 0; i < points.length - 1; i++) {
+      var seg = curve(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
+      d += i === 0 ? seg.d : seg.d.replace(/^M[^C]*/, " ");
+    }
+    var pathAttrs = { d: d, fill: "none", stroke: color, "stroke-width": 1.5, "marker-end": "url(#arr-" + cid + ")" };
+    if (dashed) pathAttrs["stroke-dasharray"] = "6,4";
+    g.appendChild(el("path", pathAttrs));
+    var box = labelBoxes[edgeIdx];
+    if (edge.label && box) {
+      g.appendChild(el("rect", { x: box.x.toFixed(1), y: box.y.toFixed(1), width: box.w.toFixed(1), height: box.h, rx: 3, fill: "rgba(250,249,245,0.92)" }));
+      g.appendChild(text(box.x + box.w / 2, box.y + 11, edge.label, { "text-anchor": "middle", "font-family": "ui-monospace,monospace", "font-size": 10, fill: color }));
     }
     svg.appendChild(g);
   });

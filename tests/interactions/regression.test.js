@@ -79,3 +79,46 @@ test("regression: a real member node revealed by expand re-syncs correctly on th
   const n0 = snap.nodes.find((n) => n.id === "n0");
   assert.equal(n0.filteredOut, false, "real member node revealed by expand must end up correctly unfaded once a filter click resyncs");
 });
+
+// Edge labels used to be positioned independently at each edge's own path
+// midpoint, with no awareness of any other edge's label — so several
+// edges spanning the same pair of layers (same row) landed their labels on
+// top of each other. Fixed via a label-collision pass (computeEdgeLabelBoxes
+// in system_spec/arch_engine/15_label_layout.js) that knows about every
+// label at once. This is the most faithful check of that fix: it reads
+// back the actual drawn <rect> boxes from drawDiagram's real output,
+// rather than testing the pure function in isolation.
+test("regression: several same-band labeled edges don't overlap in the rendered SVG", async () => {
+  // Multiple edges between the exact same node pair share an identical
+  // path (same src/dst), so their label midpoints are guaranteed
+  // identical too — the most reliable way to reproduce the overlap.
+  const spec = {
+    title: "t",
+    nodes: [
+      { id: "src", label: "Source" },
+      { id: "dst", label: "Destination" },
+    ],
+    edges: [
+      { from: "src", to: "dst", label: "request", kind: "calls" },
+      { from: "src", to: "dst", label: "ack", kind: "emits" },
+      { from: "src", to: "dst", label: "retry", kind: "calls" },
+    ],
+    groups: [],
+  };
+  const { document } = await loadSpec(spec);
+  const scope = document.querySelector(".sys-arch-scope");
+  const labelRects = [...scope.querySelectorAll(".sys-edge rect")].map((r) => ({
+    x0: +r.getAttribute("x"),
+    y0: +r.getAttribute("y"),
+    x1: +r.getAttribute("x") + +r.getAttribute("width"),
+    y1: +r.getAttribute("y") + +r.getAttribute("height"),
+  }));
+  assert.equal(labelRects.length, 3, "all 3 edge labels must be drawn");
+  for (let i = 0; i < labelRects.length; i++) {
+    for (let j = i + 1; j < labelRects.length; j++) {
+      const a = labelRects[i], b = labelRects[j];
+      const overlap = a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+      assert.equal(overlap, false, `label rects ${i} and ${j} must not overlap`);
+    }
+  }
+});
