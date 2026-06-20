@@ -11,12 +11,23 @@
  * group (enforced server-side), so every edge endpoint has exactly one
  * "nearest visible ancestor" to redirect to when something along its
  * parent chain is collapsed — no manual boundary map needed.
+ *
+ * Layout is HIERARCHICAL, not one flat pass: an expanded group's own
+ * members are laid out as a completely independent Sugiyama problem first
+ * (bottom-up, so nested expansions are sized before their parent), and the
+ * resulting bounding box is then treated as a single (large) opaque node
+ * when laying out whatever level it lives at. Expanding something only
+ * ever inserts a bigger box into its existing slot and reflows spacing
+ * around it — nothing outside the box gets reordered, and nothing can ever
+ * end up positioned "inside" a box it isn't a member of, because the
+ * outer layout reserves exactly the box's real size from the start.
  */
 (function () {
   "use strict";
 
   var NODE_W_MIN = 140, NODE_W_MAX = 260, NODE_H = 60, H_GAP = 56, V_GAP = 72, PAD = 56;
   var CHAR_W = 7.2, LABEL_PAD = 38;
+  var GROUP_PAD_X = 16, GROUP_PAD_TOP = 28, GROUP_PAD_BOTTOM = 16;
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -39,31 +50,46 @@
     return Math.max(4, Math.floor((w - LABEL_PAD) / CHAR_W));
   }
 
-  /* ── Sugiyama-style layered layout ──
-   * Four phases: (1) cycle removal via DFS back-edge detection, so the
-   * graph fed to ranking is always a DAG regardless of real feedback edges
+  /* ── Sugiyama-style layered layout, applied per-level ──
+   * Four phases, run independently for whatever flat sibling list is
+   * passed in: (1) cycle removal via DFS back-edge detection, so the graph
+   * fed to ranking is always a DAG regardless of real feedback edges
    * (retries, callbacks, reroutes — common in real architectures); (2) rank
    * assignment via Kahn's longest-path on that acyclic subgraph; (3)
-   * crossing reduction via iterative group-aware median/barycenter sweeps;
-   * (4) coordinate assignment (per-layer centering + the disjoint-group
-   * separation pass below). */
+   * crossing reduction via iterative median/barycenter sweeps; (4)
+   * coordinate assignment (per-layer centering, with per-row height to
+   * accommodate a child that's itself a large expanded-group box). */
 
   // Phase 1: classic DFS back-edge detection (white/gray/black coloring,
   // iterative to avoid recursion-depth limits). An edge to a node currently
   // on the DFS stack (gray) closes a cycle — flag it by index. Removing
   // these edges from the graph used for ranking is guaranteed to yield a
   // DAG, so every node gets a real, finite rank with no "stray" fallback.
+  //
+  // Which edge in a cycle gets flagged as "the" back edge depends on DFS
+  // root order — starting from a node that's itself mid-cycle (rather than
+  // a true source) can flag the wrong edge (e.g. the legitimate forward
+  // edge instead of the actual feedback edge), which then makes the
+  // upstream node rank AFTER its own downstream dependent. Since which
+  // nodes are mid-cycle vs true sources is exactly what raw in-degree
+  // tells you, visit roots in ascending raw-in-degree order (ties keep
+  // original order) so genuine sources are always explored first.
   function findBackEdgeSet(nodeIds, edges, nodeIdSet) {
     var adj = {};
     nodeIds.forEach(function (id) { adj[id] = []; });
+    var rawInDeg = {};
+    nodeIds.forEach(function (id) { rawInDeg[id] = 0; });
     edges.forEach(function (e, i) {
       if (e.from !== e.to && nodeIdSet[e.from] && nodeIdSet[e.to]) {
         adj[e.from].push({ to: e.to, idx: i });
+        rawInDeg[e.to]++;
       }
     });
+    var rootOrder = nodeIds.slice().sort(function (a, b) { return rawInDeg[a] - rawInDeg[b]; });
+
     var color = {}; // undefined=white, 1=gray, 2=black
     var backEdges = {};
-    nodeIds.forEach(function (start) {
+    rootOrder.forEach(function (start) {
       if (color[start]) return;
       var stack = [{ id: start, i: 0 }];
       color[start] = 1;
@@ -84,21 +110,12 @@
     return backEdges;
   }
 
-  // Phase 3 helper: group-aware median/barycenter crossing reduction.
-  // Alternates top-down (order each layer using the already-fixed layer
-  // above as reference) and bottom-up (using the layer below) sweeps. A
-  // currently-expanded group's members in a layer are treated as one
-  // contiguous movable block — sorted internally by their own barycenter,
-  // the block itself ordered among siblings by its aggregate barycenter —
-  // so a group's bounding box (min/max over its members' positions) never
-  // ends up enclosing unrelated nodes that got interleaved in between.
-  function orderLayersByBarycenter(layersMap, layerKeys, nodeGroup, predsOf, succsOf) {
+  // Phase 3: median/barycenter crossing reduction. Alternates top-down
+  // (order each layer using the already-fixed layer above as reference)
+  // and bottom-up (using the layer below) sweeps.
+  function orderLayersByBarycenter(layersMap, layerKeys, predsOf, succsOf) {
     layerKeys.forEach(function (l) {
-      layersMap[l].sort(function (a, b) {
-        var ga = nodeGroup[a] || "￿", gb = nodeGroup[b] || "￿";
-        if (ga !== gb) return ga < gb ? -1 : 1;
-        return a < b ? -1 : a > b ? 1 : 0;
-      });
+      layersMap[l].sort(function (a, b) { return a < b ? -1 : a > b ? 1 : 0; });
     });
 
     var posIndex = {};
@@ -113,35 +130,17 @@
     }
 
     function sweepLayer(l, neighborsOf) {
-      var ids = layersMap[l];
-      var blockKey = function (id) { return nodeGroup[id] || ("_n_" + id); };
-      var blocks = {};
-      ids.forEach(function (id) { (blocks[blockKey(id)] = blocks[blockKey(id)] || []).push(id); });
-      var keys = Object.keys(blocks);
+      var ids = layersMap[l].slice();
       var bcOf = {};
       ids.forEach(function (id) { bcOf[id] = barycenter(id, neighborsOf(id)); });
-      keys.forEach(function (key) {
-        blocks[key].sort(function (a, b) {
-          var ba = bcOf[a], bb = bcOf[b];
-          if (ba === null && bb === null) return a < b ? -1 : a > b ? 1 : 0;
-          if (ba === null) return 1;
-          if (bb === null) return -1;
-          return ba - bb || (a < b ? -1 : a > b ? 1 : 0);
-        });
+      ids.sort(function (a, b) {
+        var ba = bcOf[a], bb = bcOf[b];
+        if (ba === null && bb === null) return a < b ? -1 : a > b ? 1 : 0;
+        if (ba === null) return 1;
+        if (bb === null) return -1;
+        return ba - bb || (a < b ? -1 : a > b ? 1 : 0);
       });
-      keys.sort(function (ka, kb) {
-        var va = blocks[ka].map(function (id) { return bcOf[id]; }).filter(function (v) { return v !== null; });
-        var vb = blocks[kb].map(function (id) { return bcOf[id]; }).filter(function (v) { return v !== null; });
-        var ma = va.length ? va.reduce(function (a, b) { return a + b; }, 0) / va.length : null;
-        var mb = vb.length ? vb.reduce(function (a, b) { return a + b; }, 0) / vb.length : null;
-        if (ma === null && mb === null) return ka < kb ? -1 : ka > kb ? 1 : 0;
-        if (ma === null) return 1;
-        if (mb === null) return -1;
-        return ma - mb || (ka < kb ? -1 : ka > kb ? 1 : 0);
-      });
-      var newOrder = [];
-      keys.forEach(function (key) { newOrder = newOrder.concat(blocks[key]); });
-      layersMap[l] = newOrder;
+      layersMap[l] = ids;
       reindex(l);
     }
 
@@ -155,26 +154,23 @@
     }
   }
 
-  function layoutGraph(nodes, edges, groups) {
+  // The full per-level layout: takes a flat sibling list, a size-lookup
+  // (so an expanded child can be sized as a large opaque box instead of a
+  // normal node), and the edges that are "local" to this level (both
+  // endpoints are members of this same sibling list). Returns positions
+  // (top-left, in this level's own coordinate frame starting near (0,0)),
+  // per-edge via-lane points for multi-layer edges, and the level's own
+  // total width/height — which is exactly what the PARENT level needs to
+  // size this whole level as a single box, if it's itself nested.
+  function layoutFlat(memberIds, sizeOf, edges) {
     edges = edges || [];
-    groups = groups || [];
-    var nodeIds = nodes.map(function (n) { return n.id; });
-    var nodeIdSet = {}; nodeIds.forEach(function (id) { nodeIdSet[id] = true; });
-    var nodeGroup = {};
-    groups.forEach(function (g) {
-      (g.members || []).forEach(function (m) { if (!(m in nodeGroup)) nodeGroup[m] = g.id; });
-    });
+    var nodeIdSet = {};
+    memberIds.forEach(function (id) { nodeIdSet[id] = true; });
 
-    // Phase 1: cycle removal — back edges are excluded from ranking below
-    // but still drawn normally (drawDiagram is direction-agnostic).
-    var backEdges = findBackEdgeSet(nodeIds, edges, nodeIdSet);
+    var backEdges = findBackEdgeSet(memberIds, edges, nodeIdSet);
 
-    // Phase 2: rank assignment via Kahn's longest-path, on the acyclic
-    // subgraph (non-back edges only) — every node is now guaranteed a
-    // finite rank directly from the BFS, since removing DFS back edges
-    // from a directed graph always yields a DAG.
     var inDeg = {}, succs = {};
-    nodeIds.forEach(function (id) { inDeg[id] = 0; succs[id] = []; });
+    memberIds.forEach(function (id) { inDeg[id] = 0; succs[id] = []; });
     edges.forEach(function (e, i) {
       if (e.from !== e.to && nodeIdSet[e.from] && nodeIdSet[e.to] && !backEdges[i]) {
         succs[e.from].push(e.to);
@@ -184,7 +180,7 @@
 
     var layer = {};
     var queue = [];
-    nodeIds.forEach(function (id) { if (inDeg[id] === 0) { layer[id] = 0; queue.push(id); } });
+    memberIds.forEach(function (id) { if (inDeg[id] === 0) { layer[id] = 0; queue.push(id); } });
     while (queue.length) {
       var id = queue.shift();
       succs[id].forEach(function (s) {
@@ -195,72 +191,31 @@
       });
     }
     var maxL = 0;
-    nodeIds.forEach(function (id) { if (layer[id] !== undefined) maxL = Math.max(maxL, layer[id]); });
-    // Defensive only — with back edges removed, every node should already
-    // have a rank from the BFS above; this should never actually trigger.
-    nodeIds.forEach(function (id) { if (layer[id] === undefined) { maxL++; layer[id] = maxL; } });
-
-    // Expanded-group floor correction: a member with no incoming edge of
-    // its own (e.g. it's only ever called FROM a sibling inside the same
-    // group) would otherwise get seeded as a global root at layer 0 by
-    // Kahn's above, regardless of where its group actually sits — visually
-    // stranding it (and the group's bounding box) at the top of the whole
-    // diagram. Pull such "stray" members up to their group's floor — the
-    // lowest layer among siblings that DO have a real incoming edge — then
-    // re-propagate forward so anything depending on the pulled-up node
-    // stays consistent. Applies to every expanded group passed in here.
-    // Back edges are excluded throughout, same as the ranking above —
-    // otherwise a cyclic member would be misclassified as in-degree-0, and
-    // the relaxation pass below would never converge.
-    function inDeg0Orig(id) {
-      var n = 0;
-      edges.forEach(function (e, i) { if (e.to === id && e.from !== id && nodeIdSet[e.from] && !backEdges[i]) n++; });
-      return n === 0;
-    }
-    if (groups.length) {
-      groups.forEach(function (g) {
-        var members = (g.members || []).filter(function (m) { return layer[m] !== undefined; });
-        var floor = null;
-        members.forEach(function (m) {
-          if (inDeg0Orig(m)) return;
-          if (floor === null || layer[m] < floor) floor = layer[m];
-        });
-        if (floor === null) return; // whole group is rootless — nothing to anchor to
-        members.forEach(function (m) {
-          if (inDeg0Orig(m) && layer[m] < floor) layer[m] = floor;
-        });
-      });
-      // Forward relaxation until stable (graphs here are small; bounded by node count).
-      for (var pass = 0; pass < nodeIds.length; pass++) {
-        var changed = false;
-        edges.forEach(function (e, i) {
-          if (e.from === e.to || !nodeIdSet[e.from] || !nodeIdSet[e.to] || backEdges[i]) return;
-          if (layer[e.to] < layer[e.from] + 1) { layer[e.to] = layer[e.from] + 1; changed = true; }
-        });
-        if (!changed) break;
-      }
-    }
+    memberIds.forEach(function (id) { if (layer[id] !== undefined) maxL = Math.max(maxL, layer[id]); });
+    // Defensive only — removing DFS back edges always yields a DAG, so
+    // every node should already have a rank from the BFS above.
+    memberIds.forEach(function (id) { if (layer[id] === undefined) { maxL++; layer[id] = maxL; } });
 
     var layersMap = {};
-    nodeIds.forEach(function (id) { (layersMap[layer[id]] = layersMap[layer[id]] || []).push(id); });
+    memberIds.forEach(function (id) { (layersMap[layer[id]] = layersMap[layer[id]] || []).push(id); });
 
-    // Phase 3: crossing reduction. Uses ALL edges (including back edges —
-    // they're still drawn, so still worth minimizing crossings for).
     var predsOf = {}, succsOf = {};
-    nodeIds.forEach(function (id) { predsOf[id] = []; succsOf[id] = []; });
+    memberIds.forEach(function (id) { predsOf[id] = []; succsOf[id] = []; });
     edges.forEach(function (e) {
       if (e.from === e.to || !nodeIdSet[e.from] || !nodeIdSet[e.to]) return;
       succsOf[e.from].push(e.to);
       predsOf[e.to].push(e.from);
     });
-    var rankOnlyLayerKeys = Object.keys(layersMap).map(Number).sort(function (a, b) { return a - b; });
-    orderLayersByBarycenter(layersMap, rankOnlyLayerKeys, nodeGroup, predsOf, succsOf);
+    var rankLayerKeys = Object.keys(layersMap).map(Number).sort(function (a, b) { return a - b; });
+    orderLayersByBarycenter(layersMap, rankLayerKeys, predsOf, succsOf);
 
     // Reserve a via-lane in every intermediate layer for edges that skip
     // more than one layer, so the edge has somewhere of its own to pass
-    // through instead of cutting across a real node that happens to sit
-    // between its endpoints.
-    var edgeVia = {}; // edge index -> [viaNodeId, ...] in layer order
+    // through instead of cutting across a real node sitting between its
+    // endpoints. Keyed by LOCAL edge index — the caller (buildLevel, for
+    // the hierarchical case) remaps this to a globally-unique id and to
+    // the original (pre-resolution) edge index.
+    var edgeVia = {};
     edges.forEach(function (e, i) {
       if (!nodeIdSet[e.from] || !nodeIdSet[e.to] || e.from === e.to) return;
       var l0 = layer[e.from], l1 = layer[e.to];
@@ -274,91 +229,161 @@
       edgeVia[i] = vias;
     });
 
-    var widths = {};
-    nodes.forEach(function (n) { widths[n.id] = estWidth(n); });
-    Object.keys(edgeVia).forEach(function (i) { edgeVia[i].forEach(function (v) { widths[v] = 24; }); });
+    var widths = {}, heights = {};
+    memberIds.forEach(function (id) { var sz = sizeOf(id); widths[id] = sz.w; heights[id] = sz.h; });
+    Object.keys(edgeVia).forEach(function (i) {
+      edgeVia[i].forEach(function (v) { widths[v] = 24; heights[v] = NODE_H; });
+    });
 
     var layerKeys = Object.keys(layersMap).map(Number).sort(function (a, b) { return a - b; });
     var maxLayerW = 0;
     layerKeys.forEach(function (l) {
       var ns = layersMap[l];
-      var w = ns.reduce(function (s, id) { return s + widths[id]; }, 0) + Math.max(0, ns.length - 1) * H_GAP;
+      var w = ns.reduce(function (s, idd) { return s + widths[idd]; }, 0) + Math.max(0, ns.length - 1) * H_GAP;
       maxLayerW = Math.max(maxLayerW, w);
     });
 
     var positions = {};
+    var y = PAD;
     layerKeys.forEach(function (l) {
       var ns = layersMap[l];
-      var layerW = ns.reduce(function (s, id) { return s + widths[id]; }, 0) + Math.max(0, ns.length - 1) * H_GAP;
+      var rowH = Math.max.apply(null, ns.map(function (idd) { return heights[idd] || NODE_H; }));
+      var layerW = ns.reduce(function (s, idd) { return s + widths[idd]; }, 0) + Math.max(0, ns.length - 1) * H_GAP;
       var x = PAD + (maxLayerW - layerW) / 2;
-      var y = PAD + l * (NODE_H + V_GAP);
-      ns.forEach(function (id) {
-        positions[id] = { x: x, y: y, w: widths[id], h: NODE_H };
-        x += widths[id] + H_GAP;
+      ns.forEach(function (idd) {
+        var h = heights[idd] || NODE_H;
+        positions[idd] = { x: x, y: y + (rowH - h) / 2, w: widths[idd], h: h };
+        x += widths[idd] + H_GAP;
       });
+      y += rowH + V_GAP;
     });
 
-    separateDisjointGroups(positions, groups);
+    var W = 0, H = 0;
+    Object.keys(positions).forEach(function (idd) {
+      var p = positions[idd];
+      W = Math.max(W, p.x + p.w);
+      H = Math.max(H, p.y + p.h);
+    });
+    W += PAD; H += PAD;
 
-    return { positions: positions, edgeVia: edgeVia };
+    return { positions: positions, edgeVia: edgeVia, w: W, h: H };
   }
 
-  /* ── Keep groups that share no members from visually overlapping ──
-   * Two groups with disjoint membership shouldn't read as one containing
-   * the other just because their incidental x/y placement collided. When
-   * their (padded) boxes intersect, sweep every position at or past the
-   * overlap boundary further apart along whichever axis needs the smaller
-   * shift — this also carries along any via-lane points and unrelated
-   * nodes sitting in that same region, so edge routing stays consistent.
-   */
-  function separateDisjointGroups(positions, groups) {
-    if (!groups || groups.length < 2) return;
-    function box(g) {
-      var members = (g.members || []).filter(function (m) { return positions[m]; });
-      if (!members.length) return null;
-      return {
-        x0: Math.min.apply(null, members.map(function (m) { return positions[m].x; })) - 16,
-        y0: Math.min.apply(null, members.map(function (m) { return positions[m].y; })) - 16,
-        x1: Math.max.apply(null, members.map(function (m) { return positions[m].x + positions[m].w; })) + 16,
-        y1: Math.max.apply(null, members.map(function (m) { return positions[m].y + positions[m].h; })) + 16,
-      };
-    }
-    for (var pass = 0; pass < groups.length; pass++) {
-      var movedAny = false;
-      for (var i = 0; i < groups.length; i++) {
-        for (var j = i + 1; j < groups.length; j++) {
-          var ga = groups[i], gb = groups[j];
-          var sa = ga.members || [], sb = gb.members || [];
-          if (sa.some(function (m) { return sb.indexOf(m) !== -1; })) continue; // share a member — not disjoint
-          var ba = box(ga), bb = box(gb);
-          if (!ba || !bb) continue;
-          var overlapX = Math.min(ba.x1, bb.x1) - Math.max(ba.x0, bb.x0);
-          var overlapY = Math.min(ba.y1, bb.y1) - Math.max(ba.y0, bb.y0);
-          if (overlapX <= 0 || overlapY <= 0) continue;
-          movedAny = true;
-          var aC = { x: (ba.x0 + ba.x1) / 2, y: (ba.y0 + ba.y1) / 2 };
-          var bC = { x: (bb.x0 + bb.x1) / 2, y: (bb.y0 + bb.y1) / 2 };
-          if (overlapX <= overlapY) {
-            var dir = bC.x >= aC.x ? 1 : -1;
-            var threshold = dir > 0 ? Math.max(ba.x0, bb.x0) : Math.min(ba.x1, bb.x1);
-            var delta = overlapX + 8;
-            Object.keys(positions).forEach(function (id) {
-              var p = positions[id];
-              if (dir > 0 ? p.x >= threshold : p.x <= threshold) p.x += dir * delta;
-            });
-          } else {
-            var dirY = bC.y >= aC.y ? 1 : -1;
-            var thresholdY = dirY > 0 ? Math.max(ba.y0, bb.y0) : Math.min(ba.y1, bb.y1);
-            var deltaY = overlapY + 8;
-            Object.keys(positions).forEach(function (id) {
-              var p = positions[id];
-              if (dirY > 0 ? p.y >= thresholdY : p.y <= thresholdY) p.y += dirY * deltaY;
-            });
-          }
-        }
+  /* ── Hierarchical layout: recurse into each expanded group ──
+   * Bottom-up: an expanded group's own members are laid out completely
+   * independently (as if they were the whole diagram), and the resulting
+   * {w,h} becomes that group's box size one level up. Top-down (via the
+   * return-value chain, not a second pass): each level translates its
+   * children's already-computed local positions into its own coordinate
+   * frame as soon as it knows where it placed each child's box. */
+  function layoutHierarchy(spec, expandedSet, resolvedEdges) {
+    var groupsById = {};
+    (spec.groups || []).forEach(function (g) { groupsById[g.id] = g; });
+    var nodeById = {};
+    (spec.nodes || []).forEach(function (n) { nodeById[n.id] = n; });
+    var parentOf = buildParentMap(spec.groups);
+
+    function membersOf(containerId) {
+      if (containerId === null) {
+        var ids = [];
+        (spec.nodes || []).forEach(function (n) { if (parentOf[n.id] === undefined) ids.push(n.id); });
+        (spec.groups || []).forEach(function (g) { if (parentOf[g.id] === undefined) ids.push(g.id); });
+        return ids;
       }
-      if (!movedAny) break;
+      return (groupsById[containerId].members || []);
     }
+
+    // Walk up from `id` until hitting the direct child of `containerId` —
+    // i.e. which of THIS level's siblings `id` lives under (or is itself).
+    // Returns null if `id` isn't under containerId at all.
+    function ancestorAtLevel(id, containerId) {
+      var cur = id;
+      while (true) {
+        var p = parentOf[cur];
+        if (containerId === null ? p === undefined : p === containerId) return cur;
+        if (p === undefined) return null;
+        cur = p;
+      }
+    }
+
+    var viaCounter = 0;
+    var edgeViaByOrigIdx = {};
+
+    function buildLevel(containerId) {
+      var members = membersOf(containerId);
+      var childSize = {};
+      var childInner = {};
+
+      members.forEach(function (id) {
+        var g = groupsById[id];
+        if (g) {
+          if (expandedSet.has(id)) {
+            var inner = buildLevel(id); // recurse first — bottom-up sizing
+            childInner[id] = inner;
+            childSize[id] = { w: inner.w + 2 * GROUP_PAD_X, h: inner.h + GROUP_PAD_TOP + GROUP_PAD_BOTTOM };
+          } else {
+            var count = (g.members || []).length;
+            childSize[id] = { w: estWidth({ label: g.label || id, tech: count + (count === 1 ? " member" : " members") }), h: NODE_H };
+          }
+        } else {
+          var n = nodeById[id];
+          childSize[id] = { w: estWidth(n), h: NODE_H };
+        }
+      });
+
+      // Local edges: any (already-resolved) edge whose two endpoints
+      // resolve to two DIFFERENT direct children of this container. An
+      // edge fully inside one child (e.g. internal to a nested expanded
+      // group) is skipped here — it's already handled one level down.
+      var localEdges = [];
+      resolvedEdges.forEach(function (e, idx) {
+        var a = ancestorAtLevel(e.from, containerId);
+        var b = ancestorAtLevel(e.to, containerId);
+        if (a !== null && b !== null && a !== b) localEdges.push({ from: a, to: b, _origIdx: idx });
+      });
+
+      var flat = layoutFlat(members, function (id) { return childSize[id]; }, localEdges);
+
+      // Give this level's via-lane dummies globally-unique ids (so they
+      // never collide with another level's), and record, per ORIGINAL
+      // (pre-resolution-index) edge, which via ids it ended up with.
+      var renamed = {};
+      Object.keys(flat.positions).forEach(function (key) {
+        if (key.indexOf("__via_") === 0) renamed[key] = "__via_g" + (viaCounter++);
+      });
+      localEdges.forEach(function (le, k) {
+        var vias = flat.edgeVia[k];
+        if (vias) edgeViaByOrigIdx[le._origIdx] = vias.map(function (v) { return renamed[v]; });
+      });
+
+      var positions = {};
+      Object.keys(flat.positions).forEach(function (key) {
+        positions[renamed[key] || key] = flat.positions[key];
+      });
+
+      var groupBoxesLocal = {};
+      members.forEach(function (id) {
+        if (!childInner[id]) return; // leaf or collapsed placeholder — nothing further to place
+        var origin = positions[id]; // top-left + size this level assigned to the box
+        delete positions[id]; // an expanded group is drawn as a box, not as a node
+        groupBoxesLocal[id] = { x0: origin.x, y0: origin.y, x1: origin.x + origin.w, y1: origin.y + origin.h };
+        var inner = childInner[id];
+        var offX = origin.x + GROUP_PAD_X, offY = origin.y + GROUP_PAD_TOP;
+        Object.keys(inner.positions).forEach(function (iid) {
+          var ip = inner.positions[iid];
+          positions[iid] = { x: offX + ip.x, y: offY + ip.y, w: ip.w, h: ip.h };
+        });
+        Object.keys(inner.groupBoxesLocal).forEach(function (gid) {
+          var b = inner.groupBoxesLocal[gid];
+          groupBoxesLocal[gid] = { x0: offX + b.x0, y0: offY + b.y0, x1: offX + b.x1, y1: offY + b.y1 };
+        });
+      });
+
+      return { positions: positions, w: flat.w, h: flat.h, groupBoxesLocal: groupBoxesLocal };
+    }
+
+    var top = buildLevel(null);
+    return { positions: top.positions, groupBoxes: top.groupBoxesLocal, edgeVia: edgeViaByOrigIdx, w: top.w, h: top.h };
   }
 
   /* ── SVG helpers ── */
@@ -391,34 +416,17 @@
     return (table && table[kind]) || (table && table._default) || {};
   }
 
-  function nodeGroupsMap(groups) {
-    var m = {};
-    (groups || []).forEach(function (g) {
-      (g.members || []).forEach(function (mem) {
-        (m[mem] = m[mem] || []).push(g.id);
-      });
-    });
-    return m;
-  }
-
-  function drawDiagram(svg, visible, styles, positions, edgeVia, idPrefix) {
-    var nodes = visible.nodes, edges = visible.edges, groups = visible.groups || [];
-    var groupsById = visible.groupsById || {};
-    if (!Object.keys(positions).length) {
+  function drawDiagram(svg, visible, styles, layout, idPrefix) {
+    var nodes = visible.nodes, edges = visible.edges, groupsById = visible.groupsById || {};
+    var positions = layout.positions, groupBoxes = layout.groupBoxes, edgeVia = layout.edgeVia;
+    if (!Object.keys(positions).length && !Object.keys(groupBoxes).length) {
       svg.appendChild(text(200, 100, "No nodes", { "text-anchor": "middle", fill: "#87867F" }));
       return;
     }
 
-    var W = 0, H = 0;
-    Object.keys(positions).forEach(function (id) {
-      var p = positions[id];
-      W = Math.max(W, p.x + p.w);
-      H = Math.max(H, p.y + p.h);
-    });
-    W += PAD; H += PAD;
-    svg.setAttribute("viewBox", "0 0 " + Math.round(W) + " " + Math.round(H));
+    svg.setAttribute("viewBox", "0 0 " + Math.round(layout.w) + " " + Math.round(layout.h));
 
-    var nodeGroups = nodeGroupsMap(groups);
+    function directGroupOf(id) { return visible.parentOf[id] !== undefined ? [visible.parentOf[id]] : []; }
 
     var defs = el("defs");
     svg.appendChild(defs);
@@ -432,51 +440,29 @@
       defs.appendChild(marker);
     });
 
-    /* groups (bounding boxes, drawn first) — only currently-expanded groups
-       reach here at all; a collapsed group is a node (see drawn placeholder
-       below), not a box. Boxes nest: a group containing an expanded
-       sub-group extends to cover that sub-group's own box, computed
-       recursively from real positions up through the nesting. */
-    var rawBoxCache = {};
-    function computeRawBox(gid) {
-      if (rawBoxCache.hasOwnProperty(gid)) return rawBoxCache[gid];
+    /* groups (bounding boxes, drawn first) — sizes/positions come directly
+       from the hierarchical layout, which already reserved exactly this
+       much space for the group one level up; no further computation
+       needed here, and nothing else can ever end up inside one. */
+    Object.keys(groupBoxes).forEach(function (gid) {
+      var b = groupBoxes[gid];
       var g = groupsById[gid];
-      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, any = false;
-      (g.members || []).forEach(function (m) {
-        var b = null;
-        if (positions[m]) {
-          b = { x0: positions[m].x, y0: positions[m].y, x1: positions[m].x + positions[m].w, y1: positions[m].y + positions[m].h };
-        } else if (groupsById[m]) {
-          b = computeRawBox(m);
-        }
-        if (b) { any = true; x0 = Math.min(x0, b.x0); y0 = Math.min(y0, b.y0); x1 = Math.max(x1, b.x1); y1 = Math.max(y1, b.y1); }
-      });
-      var box = any ? { x0: x0, y0: y0, x1: x1, y1: y1 } : null;
-      rawBoxCache[gid] = box;
-      return box;
-    }
-
-    groups.forEach(function (g) {
-      var raw = computeRawBox(g.id);
-      if (!raw) return;
-      var gx0 = raw.x0 - 16, gy0 = raw.y0 - 28, gx1 = raw.x1 + 16, gy1 = raw.y1 + 16;
-      var gst = styleFor(styles.group, g.kind);
-      var gg = el("g", { class: "sys-group", "data-gid": g.id });
+      var gst = styleFor(styles.group, g && g.kind);
+      var gg = el("g", { class: "sys-group", "data-gid": gid });
       gg.appendChild(el("rect", {
-        x: gx0.toFixed(1), y: gy0.toFixed(1), width: (gx1 - gx0).toFixed(1), height: (gy1 - gy0).toFixed(1),
+        x: b.x0.toFixed(1), y: b.y0.toFixed(1), width: (b.x1 - b.x0).toFixed(1), height: (b.y1 - b.y0).toFixed(1),
         rx: 12, fill: gst.fill, stroke: gst.stroke, "stroke-width": 1, "stroke-dasharray": "5,3",
       }));
-      var labelText = text(gx0 + 10, gy0 + 17, g.label || g.id, {
+      gg.appendChild(text(b.x0 + 10, b.y0 + 17, (g && g.label) || gid, {
         "font-family": "ui-monospace,monospace", "font-size": 10, fill: gst.stroke, opacity: 0.9,
-      });
-      gg.appendChild(labelText);
-      var collapseBtn = text(gx1 - 14, gy0 + 17, "✕", {
+      }));
+      var collapseBtn = text(b.x1 - 14, b.y0 + 17, "✕", {
         "font-family": "ui-monospace,monospace", "font-size": 11, fill: gst.stroke,
         style: "cursor:pointer", "text-anchor": "middle", class: "sys-expand-btn",
       });
       collapseBtn.addEventListener("click", function (evt) {
         evt.stopPropagation();
-        window.sysToggleGroup(svg.closest(".sys-arch-scope"), g.id, false);
+        window.sysToggleGroup(svg.closest(".sys-arch-scope"), gid, false);
       });
       gg.appendChild(collapseBtn);
       svg.appendChild(gg);
@@ -495,12 +481,13 @@
       var g = el("g", {
         class: "sys-edge", "data-kind": edge.kind || "",
         "data-from": idPrefix + edge.from, "data-to": idPrefix + edge.to,
-        "data-src-groups": (nodeGroups[edge.from] || []).join(" "),
-        "data-dst-groups": (nodeGroups[edge.to] || []).join(" "),
+        "data-src-groups": directGroupOf(edge.from).join(" "),
+        "data-dst-groups": directGroupOf(edge.to).join(" "),
       });
-      // Long edges (spanning more than one layer) route through reserved
-      // via-lane points instead of one straight curve, so they never cut
-      // through a real node sitting in an intermediate layer.
+      // Long edges (spanning more than one layer, at whichever level they
+      // were attributed to) route through reserved via-lane points
+      // instead of one straight curve, so they never cut through a real
+      // node sitting in an intermediate layer.
       var vias = (edgeVia[edgeIdx] || []).map(function (viaId) {
         var vp = positions[viaId];
         return { x: vp.x + vp.w / 2, y: vp.y + vp.h / 2 };
@@ -546,7 +533,7 @@
         stroke = styles.changeStatus[node.status].stroke;
         fill = styles.changeStatus[node.status].fill;
       }
-      var groupStr = (nodeGroups[node.id] || []).join(" ");
+      var groupStr = directGroupOf(node.id).join(" ");
       var g = el("g", {
         class: "sys-node", "data-id": idPrefix + node.id, "data-kind": node.kind || "",
         "data-status": node.status || "", "data-groups": groupStr, style: "cursor:pointer",
@@ -668,10 +655,6 @@
       }
     });
 
-    var visibleGroups = (spec.groups || []).filter(function (g) {
-      return isVisible(g.id, parentOf, expandedSet, memo) && expandedSet.has(g.id);
-    });
-
     var edges = [];
     (spec.edges || []).forEach(function (e) {
       var from = drawnAncestorFor(e.from, parentOf, expandedSet, memo);
@@ -682,7 +665,7 @@
 
     function resolve(id) { return drawnAncestorFor(id, parentOf, expandedSet, memo); }
 
-    return { nodes: nodes, edges: edges, groups: visibleGroups, groupsById: groupsById, resolve: resolve };
+    return { nodes: nodes, edges: edges, groupsById: groupsById, parentOf: parentOf, resolve: resolve };
   }
 
   /* ── Public API ── */
@@ -693,8 +676,8 @@
 
     if (!mountEl._archExpandedSet) mountEl._archExpandedSet = new Set();
     var visible = getVisibleGraph(payload.spec, mountEl._archExpandedSet);
-    var layout = layoutGraph(visible.nodes, visible.edges, visible.groups);
-    drawDiagram(svg, visible, payload.styles, layout.positions, layout.edgeVia, idPrefix);
+    var layout = layoutHierarchy(payload.spec, mountEl._archExpandedSet, visible.edges);
+    drawDiagram(svg, visible, payload.styles, layout, idPrefix);
     drawOverlay(svg, payload.spec.sequences, layout.positions, idPrefix, visible.resolve);
 
     mountEl._archPayload = payload;
