@@ -85,14 +85,16 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
      before anything is drawn (see computeEdgeLabelBoxes). */
   var pointsByEdge = {};
   var labelCandidates = [];
-  var anchorOffsets = computeEdgeAnchorOffsets(edges);
-  edges.forEach(function (edge, edgeIdx) {
+  var aggregated = aggregateEdges(edges);
+  var drawEdges = aggregated.drawEdges, viaIndexOf = aggregated.viaIndexOf;
+  var anchorOffsets = computeEdgeAnchorOffsets(drawEdges);
+  drawEdges.forEach(function (edge, edgeIdx) {
     var sp = positions[edge.from], dp = positions[edge.to];
     if (!sp || !dp || edge.from === edge.to) return;
     var off = anchorOffsets[edgeIdx];
     var sx = sp.x + sp.w * off.fromFrac, sy = sp.y + sp.h;
     var ex = dp.x + dp.w * off.toFrac, ey = dp.y;
-    var vias = (edgeVia[edgeIdx] || []).map(function (viaId) {
+    var vias = (edgeVia[viaIndexOf[edgeIdx]] || []).map(function (viaId) {
       var vp = positions[viaId];
       return { x: vp.x + vp.w / 2, y: vp.y + vp.h / 2 };
     });
@@ -117,7 +119,7 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
   });
   var labelBoxes = computeEdgeLabelBoxes(labelCandidates);
 
-  edges.forEach(function (edge, edgeIdx) {
+  drawEdges.forEach(function (edge, edgeIdx) {
     var points = pointsByEdge[edgeIdx];
     if (!points) return;
     var est = styleFor(styles.edge, edge.kind);
@@ -135,13 +137,31 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
       var seg = curve(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
       d += i === 0 ? seg.d : seg.d.replace(/^M[^C]*/, " ");
     }
-    var pathAttrs = { d: d, fill: "none", stroke: color, "stroke-width": 1.5, "marker-end": "url(#arr-" + cid + ")" };
+    if (edge._aggregate) {
+      // Wider, invisible twin of the real path purely as a larger click
+      // target — the visible stroke is too thin to reliably click.
+      g.appendChild(el("path", { d: d, fill: "none", stroke: "transparent", "stroke-width": 10 }));
+    }
+    var pathAttrs = {
+      d: d, fill: "none", stroke: color, "stroke-width": edge._aggregate ? 2.5 : 1.5,
+      "marker-end": "url(#arr-" + cid + ")",
+    };
     if (dashed) pathAttrs["stroke-dasharray"] = "6,4";
     g.appendChild(el("path", pathAttrs));
     var box = labelBoxes[edgeIdx];
     if (edge.label && box) {
       g.appendChild(el("rect", { x: box.x.toFixed(1), y: box.y.toFixed(1), width: box.w.toFixed(1), height: box.h, rx: 3, fill: "rgba(250,249,245,0.92)" }));
       g.appendChild(text(box.x + box.w / 2, box.y + 11, edge.label, { "text-anchor": "middle", "font-family": "ui-monospace,monospace", "font-size": 10, fill: color }));
+    }
+    if (edge._aggregate) {
+      g.setAttribute("data-members", JSON.stringify(edge._members.map(function (m) {
+        return { kind: m.kind, label: m.label || "", from: m._origFrom, to: m._origTo };
+      })));
+      g.style.cursor = "pointer";
+      g.addEventListener("click", function (evt) {
+        evt.stopPropagation();
+        window.sysEdgeAggregateClick(g);
+      });
     }
     svg.appendChild(g);
   });

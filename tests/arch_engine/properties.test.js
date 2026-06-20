@@ -216,6 +216,77 @@ test("regression: edges into distinct hidden members fan out across the collapse
   assert.deepEqual(offsets.map((o) => o.toFrac), [1 / 3, 2 / 3]);
 });
 
+const aggEdgeArb = fc.array(
+  fc.record({
+    from: fc.constantFrom("a", "b", "c"),
+    to: fc.constantFrom("a", "b", "c"),
+    kind: fc.constantFrom("calls", "writes", undefined),
+    label: fc.constantFrom("x", "y", undefined),
+  }),
+  { maxLength: 12 }
+);
+
+test("property: aggregateEdges buckets exactly by (from,to,kind) and preserves every edge", () => {
+  fc.assert(
+    fc.property(aggEdgeArb, (edges) => {
+      const { drawEdges, viaIndexOf } = mod.aggregateEdges(edges);
+
+      const totalMembers = drawEdges.reduce((sum, e) => sum + (e._members ? e._members.length : 1), 0);
+      assert.equal(totalMembers, edges.length, "every input edge must be accounted for exactly once");
+      assert.equal(viaIndexOf.length, drawEdges.length);
+
+      const buckets = new Map();
+      edges.forEach((e, i) => {
+        const key = e.from + " " + e.to + " " + (e.kind || "");
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(i);
+      });
+      assert.equal(drawEdges.length, buckets.size, "one drawn edge per distinct (from,to,kind) bucket");
+
+      drawEdges.forEach((e, idx) => {
+        const key = e.from + " " + e.to + " " + (e.kind || "");
+        const idxs = buckets.get(key);
+        assert.ok(idxs, `bucket for ${key} must exist`);
+        if (idxs.length === 1) {
+          assert.equal(e, edges[idxs[0]], "singleton bucket must pass through by reference");
+          assert.equal(e._aggregate, undefined);
+        } else {
+          assert.equal(e._aggregate, true);
+          assert.equal(e._members.length, idxs.length);
+        }
+        assert.equal(viaIndexOf[idx], idxs[0], "via-lane lookup must point at a real member of this bucket");
+      });
+    })
+  );
+});
+
+test("regression: an aggregated edge doesn't draw on top of a differently-kinded edge between the same pair", () => {
+  // Same shape as the bug: two "calls" edges from distinct hidden members
+  // of g0 redirect to the same (g0, n2) pair and get aggregated, while a
+  // single "writes" edge from a third member redirects to that exact same
+  // pair too. aggregateEdges' synthetic edge has no _origFrom/_origTo, so
+  // without the fix both anchors land at the default center fraction and
+  // the thicker, click-stealing aggregate draws exactly on top of "writes".
+  const spec = {
+    nodes: [{ id: "n0" }, { id: "n1" }, { id: "n2" }, { id: "n3" }],
+    groups: [{ id: "g0", label: "g0", kind: "layer", members: ["n0", "n1", "n3"] }],
+    edges: [
+      { from: "n0", to: "n2", kind: "calls" },
+      { from: "n1", to: "n2", kind: "calls" },
+      { from: "n3", to: "n2", kind: "writes" },
+    ],
+  };
+  const expandedSet = new Set();
+  const visible = mod.getVisibleGraph(spec, expandedSet);
+  const aggregated = mod.aggregateEdges(visible.edges);
+  const offsets = mod.computeEdgeAnchorOffsets(aggregated.drawEdges);
+
+  const aggIdx = aggregated.drawEdges.findIndex((e) => e._aggregate);
+  const writesIdx = aggregated.drawEdges.findIndex((e) => e.kind === "writes");
+  assert.ok(aggIdx >= 0 && writesIdx >= 0);
+  assert.notDeepEqual(offsets[aggIdx], offsets[writesIdx], "aggregate and sibling edge must not share an anchor");
+});
+
 test("property: layout is deterministic for identical input", () => {
   fc.assert(
     fc.property(specArb, ({ spec, expandedSet }) => {

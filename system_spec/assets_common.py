@@ -121,6 +121,47 @@ function sysClick(el) {
     _selectNode(el);
 }
 
+/* ── Aggregate-edge click (synthesized panel, not server-rendered — ──
+ * aggregate edges don't exist in the spec, so unlike every other panel
+ * here there's nothing pre-rendered to toggle; this builds the content
+ * client-side from the edge's data-members JSON instead.) */
+function _escHtml(s) {
+    return String(s).replace(/[&<>"]/g, function(c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+}
+function sysEdgeAggregateClick(g) {
+    var wrap = g.closest('.sys-wrap');
+    if (_active === g) {
+        g.classList.remove('active');
+        _active = null;
+        var hint0 = wrap ? wrap.querySelector('.sys-hint') : null;
+        if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+        if (hint0) hint0.style.display = 'block';
+        return;
+    }
+    var members = JSON.parse(g.getAttribute('data-members') || '[]');
+    var scope = g.closest('.sys-arch-scope');
+    var mount = scope ? scope.querySelector('.sys-mount') : null;
+    var prefix = mount ? mount.getAttribute('data-prefix') : '';
+    var panel = document.getElementById(prefix + 'sys-edge-agg-panel');
+    if (!panel) return;
+
+    var html = '<div class="sys-ph"><span class="sys-plabel">' + members.length + ' edges</span></div><dl class="sys-meta">';
+    members.forEach(function(m) {
+        html += '<dt>' + _escHtml(m.from) + ' → ' + _escHtml(m.to) + '</dt><dd>' + _escHtml(m.label || m.kind) + '</dd>';
+    });
+    panel.innerHTML = html + '</dl>';
+
+    if (_active) _active.classList.remove('active');
+    var hint = wrap ? wrap.querySelector('.sys-hint') : null;
+    if (wrap) wrap.querySelectorAll('.sys-panel').forEach(function(p) { p.style.display = 'none'; });
+    g.classList.add('active');
+    _active = g;
+    if (hint) hint.style.display = 'none';
+    panel.style.display = 'block';
+}
+
 /* ── Jump to a referenced node from a detail-panel link ─ */
 function sysGoTo(linkEl) {
     var targetId = linkEl.getAttribute('data-target');

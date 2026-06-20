@@ -69,7 +69,7 @@ function computeEdgeAnchorOffsets(edges) {
   var fromOrigins = distinctOriginsByAnchor("from", "_origFrom");
   var toOrigins = distinctOriginsByAnchor("to", "_origTo");
 
-  return edges.map(function (e) {
+  var offsets = edges.map(function (e) {
     var fromFrac = 0.5, toFrac = 0.5;
     var origFrom = e._origFrom !== undefined ? e._origFrom : e.from;
     var origTo = e._origTo !== undefined ? e._origTo : e.to;
@@ -79,4 +79,33 @@ function computeEdgeAnchorOffsets(edges) {
     if (tg && tg.length > 1) toFrac = (tg.indexOf(origTo) + 1) / (tg.length + 1);
     return { fromFrac: fromFrac, toFrac: toFrac };
   });
+
+  // aggregateEdges' synthetic edge has no _origFrom/_origTo of its own (it
+  // summarizes several original members at once, not one), so the spreading
+  // above treats it as an ordinary, non-redirected edge and leaves it at
+  // dead center — same as any differently-kinded edge that happens to run
+  // between the exact same (from,to) pair. That used to be harmless (just
+  // two thin, differently-colored lines stacked exactly on top of each
+  // other), but an aggregate edge also gets a thicker stroke and a wide
+  // invisible click-target, so stacked like that it fully occludes the
+  // other line and steals its clicks. Nudge every aggregate off-center
+  // whenever it shares its exact (from,to) pair with another edge.
+  var byPair = {};
+  edges.forEach(function (e, i) {
+    var key = e.from + "|" + e.to;
+    (byPair[key] || (byPair[key] = [])).push(i);
+  });
+  Object.keys(byPair).forEach(function (key) {
+    var idxs = byPair[key];
+    if (idxs.length < 2) return;
+    var n = 0;
+    idxs.forEach(function (i) {
+      if (!edges[i]._aggregate) return;
+      n++;
+      offsets[i].fromFrac = Math.min(0.9, 0.5 + 0.15 * n);
+      offsets[i].toFrac = Math.min(0.9, 0.5 + 0.15 * n);
+    });
+  });
+
+  return offsets;
 }

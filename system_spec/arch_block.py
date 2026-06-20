@@ -108,8 +108,9 @@ def render_diagram_block(spec: dict, id_prefix: str = "") -> str:
       <div id="{_e(id_prefix)}sys-mount" class="sys-mount" data-prefix="{_e(id_prefix)}" data-source="{_e(id_prefix)}sys-data"></div>
     </div></div>
     <div class="sys-sidebar">
-      <div class="sys-hint">Click a node<br>to see details</div>
+      <div class="sys-hint">Click a node or edge<br>to see details</div>
       {panels}
+      <div class="sys-panel" id="{_e(id_prefix)}sys-edge-agg-panel" style="display:none"></div>
       {legend}
     </div>
   </div>

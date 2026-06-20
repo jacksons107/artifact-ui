@@ -99,9 +99,13 @@ test("regression: several same-band labeled edges don't overlap in the rendered 
       { id: "dst", label: "Destination" },
     ],
     edges: [
+      // Deliberately 3 distinct kinds — same kind + same from/to is now
+      // aggregated into one unlabeled line (see edge-aggregation.test.js),
+      // which would defeat this test's purpose of exercising 3 separately
+      // labeled edges in the same band.
       { from: "src", to: "dst", label: "request", kind: "calls" },
       { from: "src", to: "dst", label: "ack", kind: "emits" },
-      { from: "src", to: "dst", label: "retry", kind: "calls" },
+      { from: "src", to: "dst", label: "retry", kind: "writes" },
     ],
     groups: [],
   };

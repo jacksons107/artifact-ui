@@ -51,9 +51,11 @@ The Code Detail tab is this same per-group expanded view, just listed in a modul
 
 ## Code layout
 
-The client-side diagram engine lives as several plain (non-IIFE-wrapped) fragments under `system_spec/arch_engine/`, numerically prefixed so sorted-filename order is build order (`00_constants_and_utils.js`, `10_layout.js`, `15_label_layout.js`, `20_visibility.js`, `30_draw.js`, `40_bootstrap.js`). `system_spec/arch_block.py` concatenates them and wraps the result in one IIFE at build time — that's the only place the wrapper exists, so the shipped script is unchanged; don't add a wrapper to an individual fragment file.
+The client-side diagram engine lives as several plain (non-IIFE-wrapped) fragments under `system_spec/arch_engine/`, numerically prefixed so sorted-filename order is build order (`00_constants_and_utils.js`, `10_layout.js`, `15_label_layout.js`, `20_visibility.js`, `25_edge_aggregation.js`, `30_draw.js`, `40_bootstrap.js`). `system_spec/arch_block.py` concatenates them and wraps the result in one IIFE at build time — that's the only place the wrapper exists, so the shipped script is unchanged; don't add a wrapper to an individual fragment file.
 
 Edge labels are positioned via a dedicated collision-avoidance pass (`computeEdgeLabelBoxes` in `15_label_layout.js`): `drawDiagram` first computes every labeled edge's *desired* midpoint box, then resolves all of them at once (sorted top-to-bottom, each box only ever pushed down to clear what's already placed) before drawing anything — never positions a label from a single edge in isolation.
+
+Edges that resolve to the exact same `(from, to, kind)` — typically several hidden members of a collapsed group all connecting to the same external node with the same edge kind — are merged into one unlabeled line by `aggregateEdges` (`25_edge_aggregation.js`), run before drawing, before fan-out (`computeEdgeAnchorOffsets`) and label-overlap resolution ever see the edge list. The merged line is clickable (`sysEdgeAggregateClick` in `assets_common.py`) and shows the real underlying connections in the sidebar — it's a pure rendering-time merge, never part of the spec.
 
 The page's embedded CSS/JS is split by feature into `system_spec/assets_common.py`, `assets_sequences.py`, `assets_filters.py`, `assets_misc.py` (each exporting `CSS`/`JS`), assembled by the thin `system_spec/assets.py`. Add new styling/JS to whichever feature module it belongs with, not back into `assets.py` itself.
 

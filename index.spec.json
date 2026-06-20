@@ -278,7 +278,7 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/15_label_layout.js",
-      "description": "Two secondary geometry passes, both computed for ALL edges before anything is drawn: computeEdgeLabelBoxes resolves overlapping edge-label boxes (sorted top-to-bottom, only ever pushed down). computeEdgeAnchorOffsets spreads edges that share a collapsed group's box across that box's width when they came from/to genuinely different hidden members \u2014 fixing the bug where such edges used to land on the exact same point and draw on top of each other.",
+      "description": "Two secondary geometry passes, both computed for ALL edges before anything is drawn: computeEdgeLabelBoxes resolves overlapping edge-label boxes (sorted top-to-bottom, only ever pushed down). computeEdgeAnchorOffsets spreads edges that share a collapsed group's box across that box's width when they came from/to genuinely different hidden members, AND nudges an aggregated edge off-center whenever it shares its exact (from,to) pair with another differently-kinded edge \u2014 otherwise the aggregate's thicker stroke and wide click-target would draw exactly on top of (and occlude/steal clicks from) that sibling edge.",
       "signature": "function computeEdgeAnchorOffsets(edges)"
     },
     {
@@ -287,8 +287,17 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/20_visibility.js",
-      "description": "buildParentMap/isVisible/drawnAncestorFor/getVisibleGraph: resolves which nodes/groups are currently visible given an expandedSet, and redirects every edge endpoint hidden inside a collapsed group to that group's placeholder. Now also preserves each edge's original (pre-redirect) endpoint as _origFrom/_origTo, so 15_label_layout.js's fan-out can tell apart edges that came from different hidden members.",
+      "description": "buildParentMap/isVisible/drawnAncestorFor/getVisibleGraph: resolves which nodes/groups are currently visible given an expandedSet, and redirects every edge endpoint hidden inside a collapsed group to that group's placeholder. Now also preserves each edge's original (pre-redirect) endpoint as _origFrom/_origTo, so 15_label_layout.js's fan-out (and 25_edge_aggregation.js's click panel) can tell apart edges that came from different hidden members.",
       "signature": "function getVisibleGraph(spec, expandedSet)"
+    },
+    {
+      "id": "ae_aggregation",
+      "label": "25_edge_aggregation.js",
+      "kind": "file",
+      "tech": "JavaScript",
+      "file_path": "system_spec/arch_engine/25_edge_aggregation.js",
+      "description": "aggregateEdges(): merges edges that resolve to the exact same (from, to, kind) \u2014 typically several hidden members of a collapsed group all connecting to the same external node with the same kind \u2014 into one unlabeled, clickable line, run before computeEdgeAnchorOffsets/computeEdgeLabelBoxes ever see the edge list. Returns a parallel viaIndexOf so via-lane lookups (keyed by the pre-aggregation index) still resolve correctly. Singles pass through by reference, unchanged.",
+      "signature": "function aggregateEdges(edges)"
     },
     {
       "id": "ae_draw",
@@ -296,7 +305,7 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/30_draw.js",
-      "description": "drawDiagram(): draws group boxes, edges (using computeEdgeAnchorOffsets' per-edge anchor fractions instead of always the box center), and nodes/collapsed-group placeholders into the SVG. drawOverlay(): pre-renders the hidden traveling-pulse paths used by the Animate timeline, reusing the same resolve()-via-drawnAncestorFor logic so playback works regardless of which groups are currently expanded.",
+      "description": "drawDiagram(): runs aggregateEdges() first, then draws group boxes, edges (using computeEdgeAnchorOffsets' per-edge anchor fractions instead of always the box center; aggregated edges get a thicker stroke, a wider invisible hit-area, and a click handler, never a label), and nodes/collapsed-group placeholders into the SVG. drawOverlay(): pre-renders the hidden traveling-pulse paths used by the Animate timeline, reusing the same resolve()-via-drawnAncestorFor logic so playback works regardless of which groups are currently expanded.",
       "signature": "function drawDiagram(svg, visible, styles, layout, idPrefix)"
     },
     {
@@ -345,7 +354,7 @@
       "label": "Edge",
       "kind": "class",
       "tech": "JSON",
-      "description": "An arrow from one node to another. 'kind' sets its color/style (calls, imports, depends, emits, subscribes, reads, writes, deploys, owns, returns, throws, overrides, implements, instantiates). 'async: true' or certain kinds render as dashed. If an endpoint is hidden inside a collapsed group, the edge is redirected to that group's box; if multiple edges share that box from different hidden members, computeEdgeAnchorOffsets spreads their anchor points so they don't draw on top of each other.",
+      "description": "An arrow from one node to another. 'kind' sets its color/style (calls, imports, depends, emits, subscribes, reads, writes, deploys, owns, returns, throws, overrides, implements, instantiates). 'async: true' or certain kinds render as dashed. If an endpoint is hidden inside a collapsed group, the edge is redirected to that group's box; if multiple redirected edges share that box but have different (from,to) pairs, computeEdgeAnchorOffsets spreads their anchor points; if two or more resolve to the exact identical (from,to,kind), aggregateEdges merges them into one unlabeled, clickable line instead \u2014 click it to see the real underlying connections.",
       "signature": "edges[]",
       "code_snippet": "{\n  \"from\": \"ui\",                // node id\n  \"to\": \"api\",                  // node id\n  \"kind\": \"calls\",\n  \"label\": \"REST\",              // optional, shown on the arrow\n  \"async\": false,               // optional -> dashed line\n  \"protocol\": \"HTTP\"            // optional, informational\n}"
     },
@@ -382,7 +391,8 @@
       "kind": "module",
       "tech": "Node.js \u00b7 fast-check",
       "file_path": "tests/arch_engine/",
-      "description": "Property + regression suite (fast-check + Node's built-in test runner). harness.js concatenates the real arch_engine/*.js fragments \u2014 same sorted order arch_block.py uses \u2014 and exposes their internal functions for direct testing, no DOM needed. Covers cycle-breaking, hierarchical group layout, edge-label overlap, and (most recently) that edges sharing a collapsed group's box from different hidden members never get identical anchor coordinates."
+      "description": "Property + regression suite (fast-check + Node's built-in test runner). harness.js concatenates the real arch_engine/*.js fragments \u2014 same sorted order arch_block.py uses \u2014 and exposes their internal functions for direct testing, no DOM needed. Covers cycle-breaking, hierarchical group layout, edge-label overlap, that edges sharing a collapsed group's box from different hidden members never get identical anchor coordinates, and that aggregateEdges buckets exactly by (from,to,kind) and preserves every edge \u2014 plus, most recently, a regression covering the gap between those two: an aggregated edge sharing its exact (from,to) pair with a differently-kinded edge no longer draws on top of it.",
+      "signature": null
     },
     {
       "id": "tests_interactions",
@@ -390,7 +400,7 @@
       "kind": "module",
       "tech": "Node.js \u00b7 jsdom",
       "file_path": "tests/interactions/",
-      "description": "DOM-level property + regression suite for the Architecture filter bar's toggle behavior and its interaction with expand/collapse re-renders. render_helper.js shells out to python3 to render real specs through the actual pipeline, so it always exercises current filter logic, not a mock."
+      "description": "DOM-level property + regression suite for the Architecture filter bar's toggle behavior, expand/collapse re-renders, and (most recently) same-kind duplicate-edge aggregation and its click-to-reveal panel. render_helper.js shells out to python3 to render real specs through the actual pipeline, so it always exercises current filter/draw logic, not a mock."
     },
     {
       "id": "storage",
@@ -649,6 +659,18 @@
       "label": "_origFrom/_origTo feed the fan-out"
     },
     {
+      "from": "ae_draw",
+      "to": "ae_aggregation",
+      "kind": "calls",
+      "label": "aggregateEdges()"
+    },
+    {
+      "from": "ae_aggregation",
+      "to": "ae_visibility",
+      "kind": "depends",
+      "label": "_origFrom/_origTo feed the click panel's member list"
+    },
+    {
       "from": "ae_layout",
       "to": "ae_constants",
       "kind": "depends",
@@ -736,6 +758,7 @@
         "ae_layout",
         "ae_labellayout",
         "ae_visibility",
+        "ae_aggregation",
         "ae_draw",
         "ae_bootstrap"
       ]
