@@ -35,9 +35,12 @@ const specArb = fc
       return { id, label: id, kind, status };
     });
 
+    // A single-member group is rejected by parse_spec (no value over
+    // referencing the member directly) — only keep groups with 2+ members,
+    // since render_helper.js shells out to python3 and would otherwise fail.
     const groups = [];
-    if (groupMembers.g0.length) groups.push({ id: "g0", label: "Group 0", kind: "layer", members: groupMembers.g0 });
-    if (groupMembers.g1.length) groups.push({ id: "g1", label: "Group 1", kind: "layer", members: groupMembers.g1 });
+    if (groupMembers.g0.length >= 2) groups.push({ id: "g0", label: "Group 0", kind: "layer", members: groupMembers.g0 });
+    if (groupMembers.g1.length >= 2) groups.push({ id: "g1", label: "Group 1", kind: "layer", members: groupMembers.g1 });
 
     const seen = new Set();
     const edges = [];

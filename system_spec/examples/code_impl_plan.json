@@ -154,14 +154,6 @@
   ],
   "groups": [
     {
-      "id": "router_file",
-      "label": "auth_router.py",
-      "kind": "package",
-      "members": [
-        "auth_router"
-      ]
-    },
-    {
       "id": "tokens_file",
       "label": "tokens.py",
       "kind": "package",
@@ -170,14 +162,6 @@
         "rotate_refresh_token",
         "create_access_token",
         "hash_token"
-      ]
-    },
-    {
-      "id": "models_file",
-      "label": "models.py",
-      "kind": "package",
-      "members": [
-        "refresh_token_model"
       ]
     }
   ],

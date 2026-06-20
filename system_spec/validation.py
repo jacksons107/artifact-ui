@@ -3,9 +3,11 @@
 # Groups are collapsible nodes: `groups[].members` may list real node ids
 # and/or other group ids (nesting), every id may have at most one parent
 # group, and there is no separate `detail` block — a group's own members ARE
-# what it expands to reveal. `clone_of` lets one group's entire member
-# subtree (nodes, nested groups, and the edges among/touching them) be
-# reused under a new id-prefix instead of hand-duplicated.
+# what it expands to reveal. A group must have either 0 or 2+ members — a
+# single-member group adds no value over referencing that member directly.
+# `clone_of` lets one group's entire member subtree (nodes, nested groups,
+# and the edges among/touching them) be reused under a new id-prefix instead
+# of hand-duplicated.
 
 import copy
 
@@ -49,6 +51,11 @@ def _validate_groups(groups: list, node_ids: set, context: str) -> None:
         if group["id"] in group_ids:
             raise ValueError(f"{context}groups[{i}]: duplicate group id {group['id']!r}.")
         group_ids.add(group["id"])
+        if len(group.get("members", [])) == 1:
+            raise ValueError(
+                f"{context}groups[{i}] (id={group['id']!r}): a group with exactly one member adds no "
+                f"value over referencing that member directly — give it a second member or remove the group."
+            )
 
     parent_of: dict = {}
     for i, group in enumerate(groups):

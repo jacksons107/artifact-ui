@@ -203,14 +203,6 @@
       ]
     },
     {
-      "id": "edge",
-      "label": "Edge Layer",
-      "kind": "layer",
-      "members": [
-        "gateway"
-      ]
-    },
-    {
       "id": "fulfillment",
       "label": "Fulfillment",
       "kind": "domain",
