@@ -41,3 +41,42 @@ function computeEdgeLabelBoxes(candidates, gap) {
   });
   return out;
 }
+
+/* ── Collapsed-box edge anchor spreading ──
+ * When an edge's endpoint is hidden inside a collapsed group, it gets
+ * redirected (drawnAncestorFor, 20_visibility.js) to land on that group's
+ * placeholder box. If two edges originally ran to/from *different* hidden
+ * members, redirecting them both to the same box's center would draw them
+ * exactly on top of each other with no visual indication they ever had
+ * distinct endpoints. This spreads such edges across the box's width —
+ * one fraction per distinct original member, evenly spaced — while edges
+ * that share the same original (hidden) member still land on the same
+ * point, since there's nothing to disambiguate there. Edges that aren't
+ * redirected at all (the common case) keep the plain center anchor. */
+function computeEdgeAnchorOffsets(edges) {
+  function distinctOriginsByAnchor(sideKey, origKey) {
+    var byAnchor = {};
+    edges.forEach(function (e) {
+      var anchor = e[sideKey];
+      var orig = e[origKey] !== undefined ? e[origKey] : anchor;
+      if (orig === anchor) return; // not redirected — no spreading needed
+      if (!byAnchor[anchor]) byAnchor[anchor] = [];
+      if (byAnchor[anchor].indexOf(orig) === -1) byAnchor[anchor].push(orig);
+    });
+    Object.keys(byAnchor).forEach(function (k) { byAnchor[k].sort(); });
+    return byAnchor;
+  }
+  var fromOrigins = distinctOriginsByAnchor("from", "_origFrom");
+  var toOrigins = distinctOriginsByAnchor("to", "_origTo");
+
+  return edges.map(function (e) {
+    var fromFrac = 0.5, toFrac = 0.5;
+    var origFrom = e._origFrom !== undefined ? e._origFrom : e.from;
+    var origTo = e._origTo !== undefined ? e._origTo : e.to;
+    var fg = fromOrigins[e.from];
+    if (fg && fg.length > 1) fromFrac = (fg.indexOf(origFrom) + 1) / (fg.length + 1);
+    var tg = toOrigins[e.to];
+    if (tg && tg.length > 1) toFrac = (tg.indexOf(origTo) + 1) / (tg.length + 1);
+    return { fromFrac: fromFrac, toFrac: toFrac };
+  });
+}

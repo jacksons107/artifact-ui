@@ -85,11 +85,13 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
      before anything is drawn (see computeEdgeLabelBoxes). */
   var pointsByEdge = {};
   var labelCandidates = [];
+  var anchorOffsets = computeEdgeAnchorOffsets(edges);
   edges.forEach(function (edge, edgeIdx) {
     var sp = positions[edge.from], dp = positions[edge.to];
     if (!sp || !dp || edge.from === edge.to) return;
-    var sx = sp.x + sp.w / 2, sy = sp.y + sp.h;
-    var ex = dp.x + dp.w / 2, ey = dp.y;
+    var off = anchorOffsets[edgeIdx];
+    var sx = sp.x + sp.w * off.fromFrac, sy = sp.y + sp.h;
+    var ex = dp.x + dp.w * off.toFrac, ey = dp.y;
     var vias = (edgeVia[edgeIdx] || []).map(function (viaId) {
       var vp = positions[viaId];
       return { x: vp.x + vp.w / 2, y: vp.y + vp.h / 2 };

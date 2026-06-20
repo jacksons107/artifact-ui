@@ -161,6 +161,61 @@ test("property: every spec id resolves to exactly one drawn box", () => {
   );
 });
 
+test("property: edges from/to different hidden members never share an anchor point", () => {
+  fc.assert(
+    fc.property(specArb, ({ spec, expandedSet }) => {
+      const visible = mod.getVisibleGraph(spec, expandedSet);
+      const layout = mod.layoutHierarchy(spec, expandedSet, visible.edges);
+      const offsets = mod.computeEdgeAnchorOffsets(visible.edges);
+      visible.edges.forEach((edge, i) => {
+        const sp = layout.positions[edge.from], dp = layout.positions[edge.to];
+        if (!sp || !dp || edge.from === edge.to) return;
+        const off = offsets[i];
+        visible.edges.forEach((other, j) => {
+          if (j <= i) return;
+          const osp = layout.positions[other.from], odp = layout.positions[other.to];
+          if (!osp || !odp || other.from === other.to) return;
+          const ooff = offsets[j];
+          if (edge.from === other.from && edge._origFrom !== other._origFrom) {
+            const sx = sp.x + sp.w * off.fromFrac;
+            const osx = osp.x + osp.w * ooff.fromFrac;
+            assert.notEqual(sx, osx, `edges ${i} and ${j} share box ${edge.from} but different hidden origins`);
+          }
+          if (edge.to === other.to && edge._origTo !== other._origTo) {
+            const ex = dp.x + dp.w * off.toFrac;
+            const oex = odp.x + odp.w * ooff.toFrac;
+            assert.notEqual(ex, oex, `edges ${i} and ${j} share box ${edge.to} but different hidden destinations`);
+          }
+        });
+      });
+    })
+  );
+});
+
+test("regression: edges from distinct hidden members fan out across the collapsed box", () => {
+  const spec = {
+    nodes: [{ id: "n0" }, { id: "n1" }, { id: "n2" }],
+    groups: [{ id: "g0", label: "g0", kind: "layer", members: ["n0", "n1"] }],
+    edges: [{ from: "n0", to: "n2" }, { from: "n1", to: "n2" }],
+  };
+  const expandedSet = new Set();
+  const visible = mod.getVisibleGraph(spec, expandedSet);
+  const offsets = mod.computeEdgeAnchorOffsets(visible.edges);
+  assert.deepEqual(offsets.map((o) => o.fromFrac), [1 / 3, 2 / 3]);
+});
+
+test("regression: edges into distinct hidden members fan out across the collapsed box", () => {
+  const spec = {
+    nodes: [{ id: "n0" }, { id: "n1" }, { id: "n2" }],
+    groups: [{ id: "g0", label: "g0", kind: "layer", members: ["n0", "n1"] }],
+    edges: [{ from: "n2", to: "n0" }, { from: "n2", to: "n1" }],
+  };
+  const expandedSet = new Set();
+  const visible = mod.getVisibleGraph(spec, expandedSet);
+  const offsets = mod.computeEdgeAnchorOffsets(visible.edges);
+  assert.deepEqual(offsets.map((o) => o.toFrac), [1 / 3, 2 / 3]);
+});
+
 test("property: layout is deterministic for identical input", () => {
   fc.assert(
     fc.property(specArb, ({ spec, expandedSet }) => {

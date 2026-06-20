@@ -60,7 +60,7 @@ function getVisibleGraph(spec, expandedSet) {
     var from = drawnAncestorFor(e.from, parentOf, expandedSet, memo);
     var to = drawnAncestorFor(e.to, parentOf, expandedSet, memo);
     if (from === to) return; // both endpoints collapsed into the same visible box
-    edges.push(Object.assign({}, e, { from: from, to: to }));
+    edges.push(Object.assign({}, e, { from: from, to: to, _origFrom: e.from, _origTo: e.to }));
   });
 
   function resolve(id) { return drawnAncestorFor(id, parentOf, expandedSet, memo); }
