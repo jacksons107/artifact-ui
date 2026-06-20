@@ -618,12 +618,18 @@ function _applyArchFilter(scope) {
 
     var hiddenNodes = new Set();
     scope.querySelectorAll('.sys-node').forEach(function(n) {
-        var k = n.getAttribute('data-kind');
-        var s = n.getAttribute('data-status') || '';
-        var kOk = !hasKindFilter   || (kinds.size > 0 && kinds.has(k));
-        var sOk = !hasStatusFilter || !s || (statuses.size > 0 && statuses.has(s));
+        var isGroupPlaceholder = n.getAttribute('data-is-group') === '1';
+        // A collapsed group's placeholder isn't really an instance of any
+        // selectable node kind/status — it stands in for the whole group,
+        // so it's governed by the group filter (on its own id) instead of
+        // kind/status filtering, which would otherwise hide it
+        // unconditionally (its data-kind is the group's kind, never a
+        // choice the kind filter bar actually offers).
+        var kOk = isGroupPlaceholder || !hasKindFilter   || (kinds.size > 0 && kinds.has(n.getAttribute('data-kind')));
+        var sOk = isGroupPlaceholder || !hasStatusFilter || !(n.getAttribute('data-status') || '') || (statuses.size > 0 && statuses.has(n.getAttribute('data-status')));
         var groupFaded = _inInactiveGroup(n.getAttribute('data-groups'));
-        var hidden = !(kOk && sOk) || groupFaded;
+        var ownGroupFaded = isGroupPlaceholder && hasGroupFilter && inactiveGroups.has(n.getAttribute('data-group-id'));
+        var hidden = !(kOk && sOk) || groupFaded || ownGroupFaded;
         n.classList.toggle('filtered-out', hidden);
         if (hidden) hiddenNodes.add(n.getAttribute('data-id'));
     });

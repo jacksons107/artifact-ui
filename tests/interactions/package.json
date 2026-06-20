@@ -1,0 +1,13 @@
+{
+  "name": "filter-interaction-tests",
+  "private": true,
+  "description": "DOM-level property + regression tests for the Architecture filter bar (system_spec/assets.py + arch_engine.js). Dev-only — never bundled into rendered artifacts.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "fast-check": "^3.23.0",
+    "jsdom": "^29.1.1"
+  }
+}

@@ -58,3 +58,11 @@ cd tests/arch_engine && npm install && npm test
 ```
 
 The bundled examples used by `get_example`/`system_spec_examples.py` live as JSON files under `system_spec/examples/*.json` — that's the one source of truth for both the Python loader and the test suite's regression fixtures; don't hand-duplicate example data elsewhere.
+
+The Architecture filter bar's toggle behavior (`system_spec/assets.py`'s `_applyArchFilter`, plus its interaction with `arch_engine.js`'s expand/collapse re-renders) has its own DOM-level property + regression suite in `tests/interactions/` (fast-check + jsdom — dev-only). It renders real specs through the actual Python pipeline (`render_helper.js` shells out to `python3`), so it always exercises the real, current filter logic:
+
+```
+cd tests/interactions && npm install && npm test
+```
+
+If you ever touch `_applyArchFilter` or how/when it gets re-invoked after a re-render, run this before and after.

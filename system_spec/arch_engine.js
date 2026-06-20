@@ -537,6 +537,15 @@
       var g = el("g", {
         class: "sys-node", "data-id": idPrefix + node.id, "data-kind": node.kind || "",
         "data-status": node.status || "", "data-groups": groupStr, style: "cursor:pointer",
+        // A collapsed group's placeholder carries the GROUP's own kind
+        // (e.g. "layer"), not a real node kind — the kind-filter bar only
+        // ever lists real node kinds, so without this marker the filter
+        // logic would treat the placeholder as matching no kind filter at
+        // all and hide it unconditionally. data-group-id (raw, unprefixed
+        // — matches the group filter buttons' data-ag) lets the filter
+        // logic apply the GROUP filter to it instead.
+        "data-is-group": isPlaceholder ? "1" : "",
+        "data-group-id": isPlaceholder ? node.id : "",
       });
       if (node.status === "deleted") g.setAttribute("opacity", "0.5");
       g.appendChild(el("rect", { x: p.x.toFixed(1), y: p.y.toFixed(1), width: p.w, height: p.h, rx: 10, fill: fill, stroke: stroke, "stroke-width": 1.5, class: "sys-nr" }));
