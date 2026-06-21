@@ -13,29 +13,64 @@ function text(x, y, str, attrs) {
   return t;
 }
 
-function curve(sx, sy, ex, ey) {
+/* Control points [p0,c1,c2,p3] for the vertical S-curve curve() draws —
+ * factored out so label placement (15_label_layout.js, via
+ * sampleEdgeSegment below) can sample the exact same curve it renders,
+ * instead of approximating it with a straight line between anchors. */
+function cubicControlPoints(sx, sy, ex, ey) {
   var dy = ey - sy;
-  return {
-    d: "M" + sx.toFixed(1) + "," + sy.toFixed(1) +
-      " C" + sx.toFixed(1) + "," + (sy + dy * 0.45).toFixed(1) +
-      " " + ex.toFixed(1) + "," + (ey - dy * 0.45).toFixed(1) +
-      " " + ex.toFixed(1) + "," + ey.toFixed(1),
-  };
+  return [{ x: sx, y: sy }, { x: sx, y: sy + dy * 0.45 }, { x: ex, y: ey - dy * 0.45 }, { x: ex, y: ey }];
 }
 
-/* Same idea as curve(), but for side-anchored (back/same-row) edges: the
- * anchors sit on the right edge of each box, so the natural bulge is
- * horizontal (always outward to the right) rather than vertical — a
- * vertical-offset S-curve here would cut back across whatever sits
+/* Same idea as cubicControlPoints(), but for side-anchored (back/same-row)
+ * edges: the anchors sit on the right edge of each box, so the natural
+ * bulge is horizontal (always outward to the right) rather than vertical —
+ * a vertical-offset S-curve here would cut back across whatever sits
  * between the two boxes instead of looping around it. */
-function curveSide(sx, sy, ex, ey) {
+function cubicControlPointsSide(sx, sy, ex, ey) {
   var bulge = Math.max(40, Math.abs(ey - sy) * 0.3);
-  return {
-    d: "M" + sx.toFixed(1) + "," + sy.toFixed(1) +
-      " C" + (sx + bulge).toFixed(1) + "," + sy.toFixed(1) +
-      " " + (ex + bulge).toFixed(1) + "," + ey.toFixed(1) +
-      " " + ex.toFixed(1) + "," + ey.toFixed(1),
-  };
+  return [{ x: sx, y: sy }, { x: sx + bulge, y: sy }, { x: ex + bulge, y: ey }, { x: ex, y: ey }];
+}
+
+function cubicPathD(pts) {
+  return "M" + pts[0].x.toFixed(1) + "," + pts[0].y.toFixed(1) +
+    " C" + pts[1].x.toFixed(1) + "," + pts[1].y.toFixed(1) +
+    " " + pts[2].x.toFixed(1) + "," + pts[2].y.toFixed(1) +
+    " " + pts[3].x.toFixed(1) + "," + pts[3].y.toFixed(1);
+}
+
+function curve(sx, sy, ex, ey) {
+  return { d: cubicPathD(cubicControlPoints(sx, sy, ex, ey)) };
+}
+
+function curveSide(sx, sy, ex, ey) {
+  return { d: cubicPathD(cubicControlPointsSide(sx, sy, ex, ey)) };
+}
+
+/* Samples a cubic bezier (Bernstein form) into `steps+1` points — used to
+ * approximate an edge's actual rendered curve as a polyline, for label
+ * placement's "does this box sit on top of some OTHER edge" check. */
+function sampleCubic(pts, steps) {
+  var out = [];
+  for (var i = 0; i <= steps; i++) {
+    var t = i / steps, mt = 1 - t;
+    var a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
+    out.push({
+      x: a * pts[0].x + b * pts[1].x + c * pts[2].x + d * pts[3].x,
+      y: a * pts[0].y + b * pts[1].y + c * pts[2].y + d * pts[3].y,
+    });
+  }
+  return out;
+}
+
+/* Samples one consecutive point-pair's rendered curve segment — `back`
+ * picks the same straight-vs-side control points drawDiagram's draw loop
+ * uses, so the sampled polyline matches exactly what gets drawn. */
+function sampleEdgeSegment(p0, p1, back, steps) {
+  var pts = back
+    ? cubicControlPointsSide(p0.x, p0.y, p1.x, p1.y)
+    : cubicControlPoints(p0.x, p0.y, p1.x, p1.y);
+  return sampleCubic(pts, steps || 12);
 }
 
 /* ── Diagram drawing ── */
@@ -96,12 +131,14 @@ function drawDiagram(svg, visible, styles, layout, idPrefix, routingMode) {
     svg.appendChild(gg);
   });
 
-  /* edges — points/label-candidates computed for every edge first, so
-     overlapping labels can be resolved with full knowledge of all of them
-     before anything is drawn (see computeEdgeLabelBoxes). */
+  /* edges — points/bends/polylines computed for every edge first, so both
+     grid-mode routing (which needs every edge's points at once to keep two
+     unrelated edges from bending at the same height, see
+     routeEdgesOrthogonally) and label placement (which needs every OTHER
+     edge's actual rendered path, see chooseLabelAnchor) have full
+     knowledge of the whole diagram before anything is drawn. */
   var pointsByEdge = {};
   var backByEdge = {};
-  var labelCandidates = [];
   var aggregated = aggregateEdges(edges);
   var drawEdges = aggregated.drawEdges, viaIndexOf = aggregated.viaIndexOf;
   var anchorOffsets = routingMode === "grid"
@@ -125,30 +162,14 @@ function drawDiagram(svg, visible, styles, layout, idPrefix, routingMode) {
       var vp = positions[viaId];
       return { x: vp.x + vp.w / 2, y: vp.y + vp.h / 2 };
     });
-    var points = [{ x: sx, y: sy }].concat(vias, [{ x: ex, y: ey }]);
-    pointsByEdge[edgeIdx] = points;
-    if (edge.label) {
-      // Desired position is the midpoint of the routed path, not the
-      // straight src-to-dst line — for a via-routed edge that's the via
-      // point itself, not wherever the line used to pass before rerouting.
-      var midIdx = (points.length - 1) / 2;
-      var mx, my;
-      if (Number.isInteger(midIdx)) {
-        mx = points[midIdx].x; my = points[midIdx].y;
-      } else {
-        var i0 = Math.floor(midIdx), i1 = Math.ceil(midIdx);
-        mx = (points[i0].x + points[i1].x) / 2;
-        my = (points[i0].y + points[i1].y) / 2;
-      }
-      var lw = edge.label.length * 5.8 + 10;
-      labelCandidates.push({ key: edgeIdx, x: mx - lw / 2, y: my - 9, w: lw, h: 14 });
-    }
+    pointsByEdge[edgeIdx] = [{ x: sx, y: sy }].concat(vias, [{ x: ex, y: ey }]);
   });
-  var labelBoxes = computeEdgeLabelBoxes(labelCandidates);
 
   // Grid-mode routing needs every edge's points at once (not just its own)
   // so two unrelated edges crossing the same inter-layer gap can be kept
-  // from bending at the same height — see routeEdgesOrthogonally.
+  // from bending at the same height — see routeEdgesOrthogonally. Computed
+  // before label placement below so grid-mode labels can use the real bend
+  // geometry too, not just the curve-mode anchor/via approximation.
   var gridBendsByEdge = {};
   if (routingMode === "grid") {
     var gridEdgeIdxs = [], gridPointsList = [], gridObstaclesList = [];
@@ -163,6 +184,55 @@ function drawDiagram(svg, visible, styles, layout, idPrefix, routingMode) {
     var routed = routeEdgesOrthogonally(gridPointsList, gridObstaclesList);
     gridEdgeIdxs.forEach(function (edgeIdx, k) { gridBendsByEdge[edgeIdx] = routed[k]; });
   }
+
+  // The actual rendered path of every edge, as a polyline — grid mode's
+  // bends already are one; curve mode's is approximated by sampling the
+  // same cubic bezier curve()/curveSide() draw, segment by segment (each
+  // consecutive pair in pointsByEdge is its own curve, so samples are
+  // concatenated, dropping the duplicate point at each join). Used only for
+  // label placement's "would this box sit on some OTHER edge" check below
+  // — the actual stroke is still drawn straight from pointsByEdge/
+  // gridBendsByEdge in the draw loop further down.
+  var polylineByEdge = {};
+  Object.keys(pointsByEdge).forEach(function (edgeIdxStr) {
+    var edgeIdx = Number(edgeIdxStr);
+    if (routingMode === "grid") {
+      polylineByEdge[edgeIdx] = gridBendsByEdge[edgeIdx] || pointsByEdge[edgeIdx];
+      return;
+    }
+    var points = pointsByEdge[edgeIdx];
+    var back = backByEdge[edgeIdx];
+    var poly = [points[0]];
+    for (var i = 0; i < points.length - 1; i++) {
+      var sampled = sampleEdgeSegment(points[i], points[i + 1], back, 12);
+      for (var k = 1; k < sampled.length; k++) poly.push(sampled[k]);
+    }
+    polylineByEdge[edgeIdx] = poly;
+  });
+
+  var labelCandidates = [];
+  drawEdges.forEach(function (edge, edgeIdx) {
+    if (!edge.label || !pointsByEdge[edgeIdx]) return;
+    var lw = edge.label.length * 5.8 + 10;
+    var anchor = chooseLabelAnchor(edgeIdx, polylineByEdge, lw, 14);
+    if (!anchor) {
+      // Degenerate (e.g. zero-length) path — fall back to the plain
+      // anchor/via midpoint, same formula used before this change existed.
+      var points = pointsByEdge[edgeIdx];
+      var midIdx = (points.length - 1) / 2;
+      var mx, my;
+      if (Number.isInteger(midIdx)) {
+        mx = points[midIdx].x; my = points[midIdx].y;
+      } else {
+        var i0 = Math.floor(midIdx), i1 = Math.ceil(midIdx);
+        mx = (points[i0].x + points[i1].x) / 2;
+        my = (points[i0].y + points[i1].y) / 2;
+      }
+      anchor = { x: mx - lw / 2, y: my - 9 };
+    }
+    labelCandidates.push({ key: edgeIdx, x: anchor.x, y: anchor.y, w: lw, h: 14 });
+  });
+  var labelBoxes = computeEdgeLabelBoxes(labelCandidates);
 
   drawEdges.forEach(function (edge, edgeIdx) {
     var points = pointsByEdge[edgeIdx];

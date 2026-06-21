@@ -287,7 +287,7 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/15_label_layout.js",
-      "description": "Two secondary geometry passes, both computed for ALL edges before anything is drawn: computeEdgeLabelBoxes resolves overlapping edge-label boxes (sorted top-to-bottom, only ever pushed down). computeEdgeAnchorOffsets spreads edges that share a collapsed group's box across that box's width when they came from/to genuinely different hidden members, AND nudges an aggregated edge off-center whenever it shares its exact (from,to) pair with another differently-kinded edge.",
+      "description": "Two label-vs-label/anchor passes, both computed for ALL edges before anything is drawn: computeEdgeLabelBoxes resolves overlapping edge-label boxes (sorted top-to-bottom, only ever pushed down). computeEdgeAnchorOffsets spreads edges that share a collapsed group's box across that box's width when they came from/to genuinely different hidden members, AND nudges an aggregated edge off-center whenever it shares its exact (from,to) pair with another differently-kinded edge. chooseLabelAnchor (+ pointAtFraction, rectOverlapsPolyline) is a separate step that runs BEFORE computeEdgeLabelBoxes: it tries a few candidate points along a label's own edge's real rendered path (not just the literal midpoint) and picks whichever overlaps the fewest OTHER edges' paths, always including the plain midpoint as one option so the result is never worse than the old always-midpoint behavior.",
       "signature": "function computeEdgeAnchorOffsets(edges)"
     },
     {
@@ -323,7 +323,7 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/30_draw.js",
-      "description": "drawDiagram(): runs aggregateEdges() first, then draws group boxes, edges (curve() or, in grid mode, orthogonalPathD(routeEdgesOrthogonally(...)) \u2014 same anchor points, only the path geometry differs), and nodes/collapsed-group placeholders into the SVG. A back-edge (edgeGoesBackward) anchors on the box's right side instead of top/bottom, with curveSide() bulging outward for curve mode, so it never has to fight an ordinary forward edge for the same inter-layer territory. drawOverlay(): pre-renders the hidden traveling-pulse paths used by the Animate timeline, following the same routingMode and back-edge anchoring as the static edges.",
+      "description": "drawDiagram(): runs aggregateEdges() first, computes every edge's points/bends, then for EVERY edge builds a polylineByEdge approximation of its actual rendered path (grid mode's bends already are one; curve mode samples the same cubic bezier cubicControlPoints()/cubicControlPointsSide() draws, via sampleEdgeSegment) so chooseLabelAnchor (15_label_layout.js) can judge label placement against every OTHER edge's real path, not just anchor points. Then draws group boxes, edges (curve() or, in grid mode, orthogonalPathD(routeEdgesOrthogonally(...)) \u2014 same anchor points, only the path geometry differs), and nodes/collapsed-group placeholders into the SVG. A back-edge (edgeGoesBackward) anchors on the box's right side instead of top/bottom, with curveSide() bulging outward for curve mode, so it never has to fight an ordinary forward edge for the same inter-layer territory. drawOverlay(): pre-renders the hidden traveling-pulse paths used by the Animate timeline, following the same routingMode and back-edge anchoring as the static edges.",
       "signature": "function drawDiagram(svg, visible, styles, layout, idPrefix, routingMode)"
     },
     {
@@ -409,7 +409,7 @@
       "kind": "module",
       "tech": "Node.js \u00b7 fast-check",
       "file_path": "tests/arch_engine/",
-      "description": "Property + regression suite (fast-check + Node's built-in test runner). harness.js concatenates the real arch_engine/*.js fragments and exposes their internal functions for direct testing, no DOM needed. Covers cycle-breaking, hierarchical group layout, edge-label overlap, edge aggregation, and grid-mode orthogonal routing \u2014 axis-alignment, obstacle avoidance, anchor preservation, and (against a generator scoped to realistic diagram density/forward-bias, since the router is a greedy per-edge search rather than a true global track allocator) that distinct edges' routed segments never collinearly overlap.",
+      "description": "Property + regression suite (fast-check + Node's built-in test runner). harness.js concatenates the real arch_engine/*.js fragments and exposes their internal functions for direct testing, no DOM needed. Covers cycle-breaking, hierarchical group layout, edge aggregation, grid-mode orthogonal routing (axis-alignment, obstacle avoidance, anchor preservation, and \u2014 against a generator scoped to realistic diagram density/forward-bias, since the router is a greedy per-edge search rather than a true global track allocator \u2014 that distinct edges' routed segments never collinearly overlap), and label placement: a property test proving chooseLabelAnchor's other-edge overlap is never worse than the old always-midpoint placement, plus regressions demonstrating a concrete improvement and the degenerate-path fallback.",
       "signature": null
     },
     {
@@ -679,7 +679,7 @@
       "from": "ae_draw",
       "to": "ae_labellayout",
       "kind": "calls",
-      "label": "computeEdgeLabelBoxes + computeEdgeAnchorOffsets"
+      "label": "computeEdgeLabelBoxes + computeEdgeAnchorOffsets + chooseLabelAnchor(polylineByEdge)"
     },
     {
       "from": "ae_draw",
