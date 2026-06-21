@@ -5,10 +5,11 @@ function renderDiagram(payload, mountEl, idPrefix) {
   mountEl.appendChild(svg);
 
   if (!mountEl._archExpandedSet) mountEl._archExpandedSet = new Set();
+  var routingMode = mountEl._archEdgeStyle || "curve";
   var visible = getVisibleGraph(payload.spec, mountEl._archExpandedSet);
   var layout = layoutHierarchy(payload.spec, mountEl._archExpandedSet, visible.edges);
-  drawDiagram(svg, visible, payload.styles, layout, idPrefix);
-  drawOverlay(svg, payload.spec.sequences, layout.positions, idPrefix, visible.resolve);
+  drawDiagram(svg, visible, payload.styles, layout, idPrefix, routingMode);
+  drawOverlay(svg, payload.spec.sequences, layout.positions, idPrefix, visible.resolve, routingMode);
 
   mountEl._archPayload = payload;
   mountEl._archIdPrefix = idPrefix;
@@ -21,6 +22,15 @@ window.sysToggleGroup = function (scope, groupId, expand) {
   if (!mountEl._archExpandedSet) mountEl._archExpandedSet = new Set();
   if (expand) mountEl._archExpandedSet.add(groupId);
   else mountEl._archExpandedSet.delete(groupId);
+  renderDiagram(mountEl._archPayload, mountEl, mountEl._archIdPrefix);
+};
+
+window.sysEdgeStyleChange = function (selectEl) {
+  var scope = selectEl.closest(".sys-arch-scope");
+  if (!scope) return;
+  var mountEl = scope.querySelector(".sys-mount");
+  if (!mountEl || !mountEl._archPayload) return;
+  mountEl._archEdgeStyle = selectEl.value;
   renderDiagram(mountEl._archPayload, mountEl, mountEl._archIdPrefix);
 };
 

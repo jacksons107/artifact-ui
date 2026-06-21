@@ -17,6 +17,12 @@ CSS = """
               appearance: none; -webkit-appearance: none; }
 .sys-cd-panel { display: flex; flex-direction: column; gap: 12px; }
 
+/* ── Architecture edge-routing selector ───────── */
+.sys-edge-style-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.sys-edge-style-sel { font-family: var(--mono); font-size: 12px; border: var(--border); border-radius: 6px;
+                       padding: 5px 12px; background: var(--white); color: var(--slate); cursor: pointer;
+                       appearance: none; -webkit-appearance: none; }
+
 /* ── Dependency matrix ────────────────────────── */
 .sys-matrix-wrap { overflow-x: auto; background: var(--white); border: var(--border); border-radius: 12px; }
 .sys-mtx { border-collapse: collapse; font-size: 12px; white-space: nowrap; }

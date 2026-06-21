@@ -135,7 +135,7 @@
       "kind": "function",
       "tech": "Python",
       "file_path": "system_spec/arch_block.py",
-      "description": "Shared builder for one architecture-diagram unit, parameterized by id_prefix \u2014 used identically by the top-level Architecture tab AND by every Code Detail module panel. Builds the filter bar, the Animate dropdown, the detail/group/legend panels, and a JSON payload of {spec, styles} dropped into a <script type=\"application/json\"> tag next to an empty 'sys-mount' div \u2014 arch_engine.js (bundled once per page, into _ARCH_ENGINE_JS) finds that div and does the actual layout + drawing.",
+      "description": "Shared builder for one architecture-diagram unit, parameterized by id_prefix \u2014 used identically by the top-level Architecture tab AND by every Code Detail module panel. Builds the filter bar, the Animate dropdown, the Route (edge-style) dropdown, the detail/group/legend panels, and a JSON payload of {spec, styles} dropped into a <script type=\"application/json\"> tag next to an empty 'sys-mount' div \u2014 arch_engine.js (bundled once per page, into _ARCH_ENGINE_JS) finds that div and does the actual layout + drawing.",
       "signature": "def render_diagram_block(spec: dict, id_prefix: str = \"\") -> str"
     },
     {
@@ -155,6 +155,15 @@
       "file_path": "system_spec/arch_block.py",
       "description": "Builds the 'Animate' dropdown (with a 'None' option first to hide the scrubber entirely) plus one hidden-by-default timeline block per sequence.",
       "signature": "def build_animate_block(spec: dict) -> str"
+    },
+    {
+      "id": "build_edge_style_block",
+      "label": "build_edge_style_block()",
+      "kind": "function",
+      "tech": "Python",
+      "file_path": "system_spec/arch_block.py",
+      "description": "Builds the 'Route' dropdown (Curve / Grid) that lets the Architecture tab switch the client-side edge-rendering mode without touching node/group positions \u2014 wired to window.sysEdgeStyleChange in 40_bootstrap.js.",
+      "signature": "def build_edge_style_block() -> str"
     },
     {
       "id": "render_filter_bar",
@@ -261,7 +270,7 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/00_constants_and_utils.js",
-      "description": "Shared layout constants (PAD, NODE_H, V_GAP, H_GAP, GROUP_PAD_X/TOP/BOTTOM) and small string utils (truncate, maxCharsFor) used across the rest of the engine."
+      "description": "Shared layout constants (PAD, NODE_H, V_GAP, H_GAP, GROUP_PAD_X/TOP/BOTTOM) and small utils (truncate, maxCharsFor, edgeGoesBackward). edgeGoesBackward(sp,dp) flags an edge with no usable inter-layer gap below its source (same-row or true feedback edge) so 30_draw.js can anchor it on the box's side instead of forcing it through top/bottom."
     },
     {
       "id": "ae_layout",
@@ -278,7 +287,7 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/15_label_layout.js",
-      "description": "Two secondary geometry passes, both computed for ALL edges before anything is drawn: computeEdgeLabelBoxes resolves overlapping edge-label boxes (sorted top-to-bottom, only ever pushed down). computeEdgeAnchorOffsets spreads edges that share a collapsed group's box across that box's width when they came from/to genuinely different hidden members, AND nudges an aggregated edge off-center whenever it shares its exact (from,to) pair with another differently-kinded edge \u2014 otherwise the aggregate's thicker stroke and wide click-target would draw exactly on top of (and occlude/steal clicks from) that sibling edge.",
+      "description": "Two secondary geometry passes, both computed for ALL edges before anything is drawn: computeEdgeLabelBoxes resolves overlapping edge-label boxes (sorted top-to-bottom, only ever pushed down). computeEdgeAnchorOffsets spreads edges that share a collapsed group's box across that box's width when they came from/to genuinely different hidden members, AND nudges an aggregated edge off-center whenever it shares its exact (from,to) pair with another differently-kinded edge.",
       "signature": "function computeEdgeAnchorOffsets(edges)"
     },
     {
@@ -287,7 +296,7 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/20_visibility.js",
-      "description": "buildParentMap/isVisible/drawnAncestorFor/getVisibleGraph: resolves which nodes/groups are currently visible given an expandedSet, and redirects every edge endpoint hidden inside a collapsed group to that group's placeholder. Now also preserves each edge's original (pre-redirect) endpoint as _origFrom/_origTo, so 15_label_layout.js's fan-out (and 25_edge_aggregation.js's click panel) can tell apart edges that came from different hidden members.",
+      "description": "buildParentMap/isVisible/drawnAncestorFor/getVisibleGraph: resolves which nodes/groups are currently visible given an expandedSet, and redirects every edge endpoint hidden inside a collapsed group to that group's placeholder. Preserves each edge's original (pre-redirect) endpoint as _origFrom/_origTo, so 15_label_layout.js's fan-out (and 25_edge_aggregation.js's click panel) can tell apart edges that came from different hidden members.",
       "signature": "function getVisibleGraph(spec, expandedSet)"
     },
     {
@@ -296,8 +305,17 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/25_edge_aggregation.js",
-      "description": "aggregateEdges(): merges edges that resolve to the exact same (from, to, kind) \u2014 typically several hidden members of a collapsed group all connecting to the same external node with the same kind \u2014 into one unlabeled, clickable line, run before computeEdgeAnchorOffsets/computeEdgeLabelBoxes ever see the edge list. Returns a parallel viaIndexOf so via-lane lookups (keyed by the pre-aggregation index) still resolve correctly. Singles pass through by reference, unchanged.",
+      "description": "aggregateEdges(): merges edges that resolve to the exact same (from, to, kind) into one unlabeled, clickable line, run before computeEdgeAnchorOffsets/computeEdgeLabelBoxes ever see the edge list. Returns a parallel viaIndexOf so via-lane lookups (keyed by the pre-aggregation index) still resolve correctly.",
       "signature": "function aggregateEdges(edges)"
+    },
+    {
+      "id": "ae_orthogonal",
+      "label": "27_orthogonal_routing.js",
+      "kind": "file",
+      "tech": "JavaScript",
+      "file_path": "system_spec/arch_engine/27_orthogonal_routing.js",
+      "description": "Grid (orthogonal) edge routing: every hop between two consecutive points is built as an escape -> lane -> escape elbow, resolved by routeHopsAvoidingOverlap, which checks each new hop's actual geometry against every previously placed hop and real obstacle (generate-and-verify, not a heuristic envelope), escalating from a same-height gap bend up through a grown side lane to an obstacle/placed-hop-aware detour (obstacleSafeDetour / escapeEverythingDetour, both deriving safe escape heights from the real obstacle list via freeYBands rather than assuming a fixed V_GAP). computeOrthogonalAnchorOffsets spreads every edge touching a node (from OR to, one shared pool) across its width so grid mode's straight vertical runs don't coincide at a shared anchor.",
+      "signature": "function routeEdgesOrthogonally(pointsList, obstaclesList)"
     },
     {
       "id": "ae_draw",
@@ -305,8 +323,8 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/30_draw.js",
-      "description": "drawDiagram(): runs aggregateEdges() first, then draws group boxes, edges (using computeEdgeAnchorOffsets' per-edge anchor fractions instead of always the box center; aggregated edges get a thicker stroke, a wider invisible hit-area, and a click handler, never a label), and nodes/collapsed-group placeholders into the SVG. drawOverlay(): pre-renders the hidden traveling-pulse paths used by the Animate timeline, reusing the same resolve()-via-drawnAncestorFor logic so playback works regardless of which groups are currently expanded.",
-      "signature": "function drawDiagram(svg, visible, styles, layout, idPrefix)"
+      "description": "drawDiagram(): runs aggregateEdges() first, then draws group boxes, edges (curve() or, in grid mode, orthogonalPathD(routeEdgesOrthogonally(...)) \u2014 same anchor points, only the path geometry differs), and nodes/collapsed-group placeholders into the SVG. A back-edge (edgeGoesBackward) anchors on the box's right side instead of top/bottom, with curveSide() bulging outward for curve mode, so it never has to fight an ordinary forward edge for the same inter-layer territory. drawOverlay(): pre-renders the hidden traveling-pulse paths used by the Animate timeline, following the same routingMode and back-edge anchoring as the static edges.",
+      "signature": "function drawDiagram(svg, visible, styles, layout, idPrefix, routingMode)"
     },
     {
       "id": "ae_bootstrap",
@@ -314,7 +332,7 @@
       "kind": "file",
       "tech": "JavaScript",
       "file_path": "system_spec/arch_engine/40_bootstrap.js",
-      "description": "Mounts every 'sys-mount' div on the page by reading its sibling JSON payload, then runs getVisibleGraph -> layoutHierarchy -> drawDiagram for the first paint. Exposes window.sysToggleGroup (expand/collapse, re-runs the same pipeline) and window.sysClick (opens a node/group's detail panel)."
+      "description": "Mounts every 'sys-mount' div on the page by reading its sibling JSON payload, then runs getVisibleGraph -> layoutHierarchy -> drawDiagram for the first paint. Exposes window.sysToggleGroup (expand/collapse), window.sysClick (opens a node/group's detail panel), and window.sysEdgeStyleChange (switches the Route dropdown between curve/grid and re-renders)."
     },
     {
       "id": "examples",
@@ -363,7 +381,7 @@
       "label": "Group",
       "kind": "class",
       "tech": "JSON",
-      "description": "A labeled, collapsible bounding box around a set of node and/or group ids. There is no separate 'detail' block \u2014 a group's own 'members' ARE what it expands to reveal (see the arch_engine, mcp_server, system_spec, and spec_format groups on this very page: each one's members are the real functions/files they group). Every id may have at most one parent group, which is what makes collapse/expand unambiguous. A group must have either 0 or 2+ members \u2014 a single-member group is rejected, since it adds no value over referencing that member directly (this page used to have three of those \u2014 agent_layer, mcp_layer, spec_layer \u2014 removed once the rule landed). kind='layer' groups also become swim-lanes in the Layers tab.",
+      "description": "A labeled, collapsible bounding box around a set of node and/or group ids. There is no separate 'detail' block \u2014 a group's own 'members' ARE what it expands to reveal. Every id may have at most one parent group, which is what makes collapse/expand unambiguous. A group must have either 0 or 2+ members. kind='layer' groups also become swim-lanes in the Layers tab.",
       "signature": "groups[]",
       "code_snippet": "{\n  \"id\": \"workers\",\n  \"label\": \"Workers\",\n  \"kind\": \"package\",            // layer|package|team|domain|deployment\n  \"members\": [\"worker_a\", \"worker_b\"]  // real node/group ids \u2014 this IS the drill-down\n}"
     },
@@ -381,7 +399,7 @@
       "label": "Sequence",
       "kind": "class",
       "tech": "JSON",
-      "description": "An ordered list of steps (from -> to, with a label) between node ids, rendered as a swimlane diagram in the Sequences tab and overlaid on the Architecture tab via its Animate control. Both support a scrub/play timeline that walks the steps as a traveling pulse, with a click-to-reveal panel for any step's example data. A step's endpoint can be a node hidden inside a collapsed group \u2014 the overlay resolves it to whatever's currently drawn, just like a real edge would.",
+      "description": "An ordered list of steps (from -> to, with a label) between node ids, rendered as a swimlane diagram in the Sequences tab and overlaid on the Architecture tab via its Animate control. Both support a scrub/play timeline that walks the steps as a traveling pulse, with a click-to-reveal panel for any step's example data.",
       "signature": "sequences[]",
       "code_snippet": "{\n  \"id\": \"login\",\n  \"label\": \"Login Flow\",\n  \"steps\": [\n    {\"from\": \"client\", \"to\": \"api\", \"label\": \"POST /login\",\n     \"example\": \"{\\\"email\\\": \\\"a@b.com\\\", \\\"password\\\": \\\"***\\\"}\", \"example_lang\": \"json\"},\n    {\"from\": \"api\", \"to\": \"db\", \"label\": \"lookup user\",\n     \"example\": \"SELECT * FROM users WHERE email = ?\", \"example_lang\": \"sql\"}\n  ]\n}"
     },
@@ -391,7 +409,7 @@
       "kind": "module",
       "tech": "Node.js \u00b7 fast-check",
       "file_path": "tests/arch_engine/",
-      "description": "Property + regression suite (fast-check + Node's built-in test runner). harness.js concatenates the real arch_engine/*.js fragments \u2014 same sorted order arch_block.py uses \u2014 and exposes their internal functions for direct testing, no DOM needed. Covers cycle-breaking, hierarchical group layout, edge-label overlap, that edges sharing a collapsed group's box from different hidden members never get identical anchor coordinates, and that aggregateEdges buckets exactly by (from,to,kind) and preserves every edge \u2014 plus, most recently, a regression covering the gap between those two: an aggregated edge sharing its exact (from,to) pair with a differently-kinded edge no longer draws on top of it.",
+      "description": "Property + regression suite (fast-check + Node's built-in test runner). harness.js concatenates the real arch_engine/*.js fragments and exposes their internal functions for direct testing, no DOM needed. Covers cycle-breaking, hierarchical group layout, edge-label overlap, edge aggregation, and grid-mode orthogonal routing \u2014 axis-alignment, obstacle avoidance, anchor preservation, and (against a generator scoped to realistic diagram density/forward-bias, since the router is a greedy per-edge search rather than a true global track allocator) that distinct edges' routed segments never collinearly overlap.",
       "signature": null
     },
     {
@@ -400,7 +418,7 @@
       "kind": "module",
       "tech": "Node.js \u00b7 jsdom",
       "file_path": "tests/interactions/",
-      "description": "DOM-level property + regression suite for the Architecture filter bar's toggle behavior, expand/collapse re-renders, and (most recently) same-kind duplicate-edge aggregation and its click-to-reveal panel. render_helper.js shells out to python3 to render real specs through the actual pipeline, so it always exercises current filter/draw logic, not a mock."
+      "description": "DOM-level property + regression suite for the Architecture filter bar's toggle behavior, expand/collapse re-renders, and same-kind duplicate-edge aggregation. render_helper.js shells out to python3 to render real specs through the actual pipeline, so it always exercises current filter/draw logic, not a mock."
     },
     {
       "id": "storage",
@@ -413,7 +431,7 @@
       "id": "browser",
       "label": "Browser Tab",
       "kind": "external",
-      "description": "Opened via webbrowser.open() to preview the rendered artifact. arch_engine.js executes here \u2014 layout and drawing happen client-side, on first paint and again on every expand/collapse toggle."
+      "description": "Opened via webbrowser.open() to preview the rendered artifact. arch_engine.js executes here \u2014 layout and drawing happen client-side, on first paint and again on every expand/collapse toggle or Route/Animate control change."
     }
   ],
   "edges": [
@@ -494,6 +512,12 @@
       "to": "ae_layout",
       "kind": "depends",
       "label": "loads real fragments via harness.js"
+    },
+    {
+      "from": "tests_arch_engine",
+      "to": "ae_orthogonal",
+      "kind": "depends",
+      "label": "property + regression tests for grid routing"
     },
     {
       "from": "tests_arch_engine",
@@ -600,6 +624,11 @@
     },
     {
       "from": "render_diagram_block",
+      "to": "build_edge_style_block",
+      "kind": "calls"
+    },
+    {
+      "from": "render_diagram_block",
       "to": "build_node_sequences",
       "kind": "calls"
     },
@@ -653,6 +682,12 @@
       "label": "computeEdgeLabelBoxes + computeEdgeAnchorOffsets"
     },
     {
+      "from": "ae_draw",
+      "to": "ae_orthogonal",
+      "kind": "calls",
+      "label": "grid mode: routeEdgesOrthogonally() + orthogonalPathD()"
+    },
+    {
       "from": "ae_labellayout",
       "to": "ae_visibility",
       "kind": "depends",
@@ -680,7 +715,13 @@
       "from": "ae_draw",
       "to": "ae_constants",
       "kind": "depends",
-      "label": "truncate()/maxCharsFor()"
+      "label": "truncate()/maxCharsFor()/edgeGoesBackward()"
+    },
+    {
+      "from": "ae_orthogonal",
+      "to": "ae_constants",
+      "kind": "depends",
+      "label": "NODE_H (escape distance)"
     },
     {
       "from": "edge_concept",
@@ -736,6 +777,7 @@
         "render_diagram_block",
         "build_node_sequences",
         "build_animate_block",
+        "build_edge_style_block",
         "render_filter_bar",
         "render_detail_panels",
         "render_group_panels",
@@ -759,6 +801,7 @@
         "ae_labellayout",
         "ae_visibility",
         "ae_aggregation",
+        "ae_orthogonal",
         "ae_draw",
         "ae_bootstrap"
       ]
@@ -918,12 +961,12 @@
         {
           "from": "parse_spec",
           "to": "render_diagram_block",
-          "label": "build filter bar + JSON {spec, styles} payload + sys-mount div"
+          "label": "build filter bar + Route/Animate dropdowns + JSON {spec, styles} payload + sys-mount div"
         },
         {
           "from": "render_diagram_block",
           "to": "ae_bootstrap",
-          "label": "browser mounts: getVisibleGraph -> layoutHierarchy -> drawDiagram (and again on every expand/collapse)"
+          "label": "browser mounts: getVisibleGraph -> layoutHierarchy -> drawDiagram (and again on every expand/collapse or Route change)"
         }
       ]
     },

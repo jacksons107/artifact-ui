@@ -23,12 +23,28 @@ function curve(sx, sy, ex, ey) {
   };
 }
 
+/* Same idea as curve(), but for side-anchored (back/same-row) edges: the
+ * anchors sit on the right edge of each box, so the natural bulge is
+ * horizontal (always outward to the right) rather than vertical — a
+ * vertical-offset S-curve here would cut back across whatever sits
+ * between the two boxes instead of looping around it. */
+function curveSide(sx, sy, ex, ey) {
+  var bulge = Math.max(40, Math.abs(ey - sy) * 0.3);
+  return {
+    d: "M" + sx.toFixed(1) + "," + sy.toFixed(1) +
+      " C" + (sx + bulge).toFixed(1) + "," + sy.toFixed(1) +
+      " " + (ex + bulge).toFixed(1) + "," + ey.toFixed(1) +
+      " " + ex.toFixed(1) + "," + ey.toFixed(1),
+  };
+}
+
 /* ── Diagram drawing ── */
 function styleFor(table, kind) {
   return (table && table[kind]) || (table && table._default) || {};
 }
 
-function drawDiagram(svg, visible, styles, layout, idPrefix) {
+function drawDiagram(svg, visible, styles, layout, idPrefix, routingMode) {
+  routingMode = routingMode || "curve";
   var nodes = visible.nodes, edges = visible.edges, groupsById = visible.groupsById || {};
   var positions = layout.positions, groupBoxes = layout.groupBoxes, edgeVia = layout.edgeVia;
   if (!Object.keys(positions).length && !Object.keys(groupBoxes).length) {
@@ -84,16 +100,27 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
      overlapping labels can be resolved with full knowledge of all of them
      before anything is drawn (see computeEdgeLabelBoxes). */
   var pointsByEdge = {};
+  var backByEdge = {};
   var labelCandidates = [];
   var aggregated = aggregateEdges(edges);
   var drawEdges = aggregated.drawEdges, viaIndexOf = aggregated.viaIndexOf;
-  var anchorOffsets = computeEdgeAnchorOffsets(drawEdges);
+  var anchorOffsets = routingMode === "grid"
+    ? computeOrthogonalAnchorOffsets(drawEdges)
+    : computeEdgeAnchorOffsets(drawEdges);
   drawEdges.forEach(function (edge, edgeIdx) {
     var sp = positions[edge.from], dp = positions[edge.to];
     if (!sp || !dp || edge.from === edge.to) return;
     var off = anchorOffsets[edgeIdx];
-    var sx = sp.x + sp.w * off.fromFrac, sy = sp.y + sp.h;
-    var ex = dp.x + dp.w * off.toFrac, ey = dp.y;
+    var back = edgeGoesBackward(sp, dp);
+    backByEdge[edgeIdx] = back;
+    var sx, sy, ex, ey;
+    if (back) {
+      sx = sp.x + sp.w; sy = sp.y + sp.h * off.fromFrac;
+      ex = dp.x + dp.w; ey = dp.y + dp.h * off.toFrac;
+    } else {
+      sx = sp.x + sp.w * off.fromFrac; sy = sp.y + sp.h;
+      ex = dp.x + dp.w * off.toFrac; ey = dp.y;
+    }
     var vias = (edgeVia[viaIndexOf[edgeIdx]] || []).map(function (viaId) {
       var vp = positions[viaId];
       return { x: vp.x + vp.w / 2, y: vp.y + vp.h / 2 };
@@ -119,6 +146,24 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
   });
   var labelBoxes = computeEdgeLabelBoxes(labelCandidates);
 
+  // Grid-mode routing needs every edge's points at once (not just its own)
+  // so two unrelated edges crossing the same inter-layer gap can be kept
+  // from bending at the same height — see routeEdgesOrthogonally.
+  var gridBendsByEdge = {};
+  if (routingMode === "grid") {
+    var gridEdgeIdxs = [], gridPointsList = [], gridObstaclesList = [];
+    Object.keys(pointsByEdge).forEach(function (edgeIdxStr) {
+      var edgeIdx = Number(edgeIdxStr);
+      var edge = drawEdges[edgeIdx];
+      var viaIds = edgeVia[viaIndexOf[edgeIdx]] || [];
+      gridEdgeIdxs.push(edgeIdx);
+      gridPointsList.push(pointsByEdge[edgeIdx]);
+      gridObstaclesList.push(obstaclesFor(positions, [edge.from, edge.to].concat(viaIds)));
+    });
+    var routed = routeEdgesOrthogonally(gridPointsList, gridObstaclesList);
+    gridEdgeIdxs.forEach(function (edgeIdx, k) { gridBendsByEdge[edgeIdx] = routed[k]; });
+  }
+
   drawEdges.forEach(function (edge, edgeIdx) {
     var points = pointsByEdge[edgeIdx];
     if (!points) return;
@@ -132,10 +177,16 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
       "data-src-groups": directGroupOf(edge.from).join(" "),
       "data-dst-groups": directGroupOf(edge.to).join(" "),
     });
-    var d = "";
-    for (var i = 0; i < points.length - 1; i++) {
-      var seg = curve(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
-      d += i === 0 ? seg.d : seg.d.replace(/^M[^C]*/, " ");
+    var d;
+    if (routingMode === "grid") {
+      d = orthogonalPathD(gridBendsByEdge[edgeIdx]);
+    } else {
+      d = "";
+      var curveFn = backByEdge[edgeIdx] ? curveSide : curve;
+      for (var i = 0; i < points.length - 1; i++) {
+        var seg = curveFn(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
+        d += i === 0 ? seg.d : seg.d.replace(/^M[^C]*/, " ");
+      }
     }
     if (edge._aggregate) {
       // Wider, invisible twin of the real path purely as a larger click
@@ -221,7 +272,8 @@ function drawDiagram(svg, visible, styles, layout, idPrefix) {
  * whatever is actually drawn right now (the leaf itself, or the nearest
  * collapsed ancestor's placeholder), so Animate works regardless of which
  * groups happen to be expanded. */
-function drawOverlay(svg, sequences, positions, idPrefix, resolve) {
+function drawOverlay(svg, sequences, positions, idPrefix, resolve, routingMode) {
+  routingMode = routingMode || "curve";
   (sequences || []).forEach(function (seq) {
     (seq.steps || []).forEach(function (step, i) {
       var fromId = resolve(step.from), toId = resolve(step.to);
@@ -240,9 +292,21 @@ function drawOverlay(svg, sequences, positions, idPrefix, resolve) {
           " Q" + (cx + 24).toFixed(1) + "," + (cy + 8).toFixed(1) + " " + cx.toFixed(1) + "," + (cy + 8).toFixed(1);
         dotX = cx; dotY = cy - 8;
       } else {
-        var sx = sp.x + sp.w / 2, sy = sp.y + sp.h;
-        var ex = dp.x + dp.w / 2, ey = dp.y;
-        pathD = curve(sx, sy, ex, ey).d;
+        var back = edgeGoesBackward(sp, dp);
+        var sx, sy, ex, ey;
+        if (back) {
+          sx = sp.x + sp.w; sy = sp.y + sp.h / 2;
+          ex = dp.x + dp.w; ey = dp.y + dp.h / 2;
+        } else {
+          sx = sp.x + sp.w / 2; sy = sp.y + sp.h;
+          ex = dp.x + dp.w / 2; ey = dp.y;
+        }
+        if (routingMode === "grid") {
+          var obstacles = obstaclesFor(positions, [fromId, toId]);
+          pathD = orthogonalPathD(orthogonalSegments([{ x: sx, y: sy }, { x: ex, y: ey }], obstacles));
+        } else {
+          pathD = (back ? curveSide : curve)(sx, sy, ex, ey).d;
+        }
         dotX = sx; dotY = sy;
       }
       g.appendChild(el("path", { class: "seq-ov-path", d: pathD, fill: "none", stroke: "#D97757", "stroke-width": 2 }));

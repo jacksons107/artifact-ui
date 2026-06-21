@@ -70,6 +70,17 @@ def build_animate_block(spec: dict) -> str:
     return html
 
 
+def build_edge_style_block() -> str:
+    html  = '<div class="sys-edge-style-controls">'
+    html += '<span class="sys-fl">Route</span>'
+    html += '<select class="sys-edge-style-sel" onchange="sysEdgeStyleChange(this)">'
+    html += '<option value="curve">Curve</option>'
+    html += '<option value="grid">Grid</option>'
+    html += '</select>'
+    html += '</div>'
+    return html
+
+
 def _style_tables() -> dict:
     return {
         "node":         {**NODE_KIND_STYLES, "_default": _DEFAULT_NODE_STYLE},
@@ -86,6 +97,7 @@ def render_diagram_block(spec: dict, id_prefix: str = "") -> str:
     panels     += render_group_panels(spec, id_prefix=id_prefix)
     legend      = render_legend(spec)
     filter_bar  = render_filter_bar(spec)
+    edge_style_blk = build_edge_style_block()
     animate_blk = build_animate_block(spec) if has_seqs else ""
 
     payload = {
@@ -102,6 +114,7 @@ def render_diagram_block(spec: dict, id_prefix: str = "") -> str:
     return f"""
 <div class="sys-arch-scope">
   {filter_bar}
+  {edge_style_blk}
   {animate_blk}
   <div class="sys-wrap">
     <div class="sys-main"><div class="sys-diagram">

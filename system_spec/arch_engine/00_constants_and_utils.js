@@ -53,3 +53,16 @@ function estWidth(node) {
 function maxCharsFor(w) {
   return Math.max(4, Math.floor((w - LABEL_PAD) / CHAR_W));
 }
+
+/* An edge whose target box doesn't sit cleanly below the source box's
+ * bottom (a same-row edge, or a real feedback/back edge from cycle-
+ * breaking) has no usable inter-layer gap to anchor through top/bottom —
+ * forcing it through bottom-to-top anchors anyway is exactly what made
+ * back edges and ordinary forward edges fight over the same vertical
+ * territory (the inter-layer V_GAP band) in grid mode, and loop oddly back
+ * up through the diagram in curve mode. Anchoring on the right side
+ * instead (see drawDiagram/drawOverlay) keeps these in their own lane,
+ * off to the side, regardless of rendering mode. */
+function edgeGoesBackward(sp, dp) {
+  return dp.y < sp.y + sp.h - 0.5;
+}
