@@ -10,6 +10,28 @@
 # of hand-duplicated.
 
 import copy
+import json
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
+
+SCHEMA_PATH = Path(__file__).parent / "spec_schema.json"
+_SCHEMA = json.loads(SCHEMA_PATH.read_text())
+_VALIDATOR = Draft202012Validator(_SCHEMA)
+
+
+def _validate_schema(data: dict) -> None:
+    """Shape-validates raw spec input against spec_schema.json (required fields,
+    types, structural nesting) before any graph-relational checks run below —
+    those checks assume well-shaped input and raise confusing secondary errors
+    otherwise. Run pre-clone-resolution since 'clone_of' only exists pre-resolution."""
+    errors = sorted(_VALIDATOR.iter_errors(data), key=lambda e: list(map(str, e.absolute_path)))
+    if not errors:
+        return
+    e = errors[0]
+    path = "".join(f"[{p!r}]" if isinstance(p, str) else f"[{p}]" for p in e.absolute_path)
+    location = f"data{path}" if path else "data (top level)"
+    raise ValueError(f"{location}: {e.message}")
 
 
 def _validate_nodes_edges(nodes: list, edges: list, context: str) -> set:
@@ -203,6 +225,8 @@ def _resolve_clones(nodes: list, edges: list, groups: list) -> tuple:
 
 
 def parse_spec(data: dict) -> dict:
+    _validate_schema(data)
+
     title  = data.get("title", "Untitled System")
     nodes  = data.get("nodes", [])
     edges  = data.get("edges", [])

@@ -27,7 +27,8 @@ def build_tool_description() -> str:
         "Call get_example('sys_microservices') for system-level, get_example('code_bug_fix')\n"
         "for code-level, get_example('mixed_levels') to combine both, or\n"
         "get_example('sys_replicated_cells') for clone_of. Read the example, then adapt it\n"
-        "for your system.\n\n"
+        "for your system. For the exact required/optional fields, call get_spec_schema —\n"
+        "the formal JSON Schema, useful when a field's requirement isn't clear from an example.\n\n"
 
         "── SPEC SCHEMA ────────────────────────────────────────────────────────────────\n"
         "{\n"

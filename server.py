@@ -275,6 +275,17 @@ async def list_tools() -> list[types.Tool]:
                 },
                 "required": ["path"],
             },
+        ),
+        types.Tool(
+            name="get_spec_schema",
+            description=(
+                "Return the formal JSON Schema for the system_spec format — the canonical "
+                "reference for required vs. optional fields and structural nesting of "
+                "nodes/edges/groups/sequences. Use this alongside get_example: get_example shows "
+                "a realistic instance, get_spec_schema shows the exact shape it must conform to, "
+                "including fields a single example may not exercise."
+            ),
+            inputSchema={"type": "object", "properties": {}},
         )
     ]
 
@@ -318,6 +329,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
                 {"error": f"No spec found at {spec_path}."}
             ))]
         return [types.TextContent(type="text", text=spec_path.read_text(encoding="utf-8"))]
+
+    if name == "get_spec_schema":
+        return [types.TextContent(type="text", text=system_spec_module.validation.SCHEMA_PATH.read_text(encoding="utf-8"))]
 
     if name != "render_artifact":
         raise ValueError(f"Unknown tool: {name}")

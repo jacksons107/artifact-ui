@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://artifact-ui.local/system_spec.schema.json",
+  "title": "system_spec",
+  "description": "Canonical shape grammar for the system_spec format. Covers required fields, types, and structural nesting only. Graph-relational invariants (single-parent rule, group member count, cycle detection, clone_of prefixing/no-chaining) are NOT expressible here and are enforced separately in system_spec/validation.py.",
+  "type": "object",
+  "required": ["nodes"],
+  "additionalProperties": true,
+  "properties": {
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    },
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/group" }
+    },
+    "sequences": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sequence" }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "kind": { "type": "string" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": true,
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "kind": { "type": "string" },
+        "label": { "type": "string" }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "kind": { "type": "string" },
+        "members": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "clone_of": { "type": "string" }
+      }
+    },
+    "sequence": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/step" }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "label": { "type": "string" },
+        "example": { "type": "string" },
+        "example_before": { "type": "string" },
+        "example_after": { "type": "string" },
+        "example_lang": { "type": "string" }
+      }
+    }
+  }
+}

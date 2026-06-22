@@ -14,6 +14,7 @@ codebase explainer, or system visualization of any kind.
 1. **Always call `get_example` first** — inspect `sys_microservices` or another example to understand the schema before building a spec.
 2. Call `render_artifact(template="system_spec", mode="immediate", data={...})` with your spec.
 3. Use `mode="interactive"` when you want the user to confirm or submit something before you continue.
+4. If a field's exact requirement (required vs. optional) isn't clear from the quick reference or an example, call `get_spec_schema` — the formal JSON Schema for the format.
 
 ## Spec quick reference
 
